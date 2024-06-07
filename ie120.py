@@ -10,7 +10,7 @@ import collections
 import cv2
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--model', help='model name',default='ie100-050-240')
+parser.add_argument('--model', help='model name',default='ie120-050-240')
 parser.add_argument('--stretch', help='unit test receptive field random scale factor',default=0.9, type=float)
 parser.add_argument('--nbatch', help='unit test training batches',default=10000, type=int)
 parser.add_argument('--batch', help='batch size',default=3, type=int)
@@ -24,7 +24,7 @@ print(args)
 class IE100(nn.Module):
     def __init__(self, args):
         super(IE100, self).__init__()
-        if args.model=='ie100-050-240':
+        if args.model=='ie120-050-240':
             self.width = 700
             self.height = 700
             self.fm_width = 2
@@ -33,7 +33,7 @@ class IE100(nn.Module):
             self.spacey = 100
             self.lvec = 49
 
-        if args.model=='ie100-200-060':
+        if args.model=='ie120-200-060':
             self.width = 1920
             self.height = 1080
             self.fm_width = 21
@@ -42,7 +42,7 @@ class IE100(nn.Module):
             self.spacey = 108
             self.lvec = 100
 
-        if args.model=='ie100-500-024':
+        if args.model=='ie120-500-024':
             self.width = 2448
             self.height = 2048
             self.fm_width = 29
@@ -166,7 +166,7 @@ def generate_batch(args,width,height,lvec,spacex,spacey):
         while dw>1000:
             dw = dw//2
             dh = dh//2
-        cv2.imshow('ie100', cv2.resize(d[0],dsize=(dw,dh),interpolation=cv2.INTER_LINEAR)) 
+        cv2.imshow('ie120', cv2.resize(d[0],dsize=(dw,dh),interpolation=cv2.INTER_LINEAR)) 
         cv2.waitKey(1)
     d = d.astype(np.float32)/255.
     d = np.rollaxis(d,-1,1)
