@@ -22,9 +22,9 @@ args.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(args.se
 print(args)
 
 class IE120(nn.Module):
-    def __init__(self, args):
+    def __init__(self, model):
         super(IE120, self).__init__()
-        if args.model=='ie120-050-240':
+        if model=='ie120-050-240':
             self.width = 700
             self.height = 700
             self.fm_width = 2
@@ -33,7 +33,7 @@ class IE120(nn.Module):
             self.spacey = 100
             self.lvec = 49
 
-        if args.model=='ie120-200-060':
+        if model=='ie120-200-060':
             self.width = 1920
             self.height = 1080
             self.fm_width = 21
@@ -42,7 +42,7 @@ class IE120(nn.Module):
             self.spacey = 108
             self.lvec = 100
 
-        if args.model=='ie120-500-024':
+        if model=='ie120-500-024':
             self.width = 2448
             self.height = 2048
             self.fm_width = 29
@@ -105,7 +105,7 @@ class IE120(nn.Module):
         fusedconv.bias.data = b_eff.data
         return fusedconv
 
-    def save(self, args):
+    def save(self, model):
         # merge BN with previous Conv2D
         enc = nn.Sequential(collections.OrderedDict([
           ('conv1', self.fuse_conv_and_bn(self.layer1[0],self.layer1[1])), ('relu1', nn.ReLU()),
@@ -129,8 +129,8 @@ class IE120(nn.Module):
         ]))
         task = nn.Sequential(collections.OrderedDict([('task', self.task)]))
         # save model to file
-        torch.save(enc, '{}.pt'.format(args.model))
-        torch.save(task, 'task.{}.pt'.format(args.model))
+        torch.save(enc, '{}.pt'.format(model))
+        torch.save(task, 'task.{}.pt'.format(model))
 
 # Train the model
 def generate_batch(args,width,height,lvec,spacex,spacey):
@@ -173,7 +173,7 @@ def generate_batch(args,width,height,lvec,spacex,spacey):
     return (d,l)
 
 # Device configuration
-model = IE120(args)
+model = IE120(args.model)
 torchinfo.summary(model, input_size=(1, 3, model.height, model.width))
 device = torch.device('cpu')
 model = model.to(device)
@@ -204,4 +204,4 @@ for i in range(args.nbatch):
 
     print ('batch [{}/{}] loss {:.4f} grad {:.4f}'.format(i+1, args.nbatch, loss.item(),total_norm))
     if (i%100)==0:
-        model.save(args)
+        model.save(args.model)
