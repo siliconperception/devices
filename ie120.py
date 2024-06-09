@@ -1,4 +1,4 @@
-# This file produces reference PyTorch models for the IE100 image encoder
+# This file produces reference PyTorch models for the IE120 image encoder
 # It also trains the encoder to perform a synthetic object detection task as a unit test
 
 import numpy as np
@@ -21,9 +21,9 @@ args = parser.parse_args()
 args.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(args.seed)))
 print(args)
 
-class IE100(nn.Module):
+class IE120(nn.Module):
     def __init__(self, args):
-        super(IE100, self).__init__()
+        super(IE120, self).__init__()
         if args.model=='ie120-050-240':
             self.width = 700
             self.height = 700
@@ -173,7 +173,7 @@ def generate_batch(args,width,height,lvec,spacex,spacey):
     return (d,l)
 
 # Device configuration
-model = IE100(args)
+model = IE120(args)
 torchinfo.summary(model, input_size=(1, 3, model.height, model.width))
 device = torch.device('cpu')
 model = model.to(device)
