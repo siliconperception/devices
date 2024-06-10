@@ -1,2 +1,2 @@
 # models
-PyTorch models for the IE120 image encoder
+PyTorch models for Silicon Perception image encoders
