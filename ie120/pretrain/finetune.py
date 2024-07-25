@@ -19,6 +19,11 @@ import Imagenet
 import subprocess
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--centercrop', help='crop to square',default=False, action='store_true')
+parser.add_argument('--step', help='LR scheduler batches per step',default=10000, type=int)
+parser.add_argument('--end_factor', help='LR linear schedule parameter',default=1./50, type=float)
+parser.add_argument('--total_iters', help='LR linear schedule parameter',default=10, type=float)
+parser.add_argument('--workers', help='number of threads for batch generation',default=20, type=int)
 parser.add_argument('--freeze', help='freeze encoder weights',default=False, action='store_true')
 parser.add_argument('--imagenet', help='imagenet dataset base directory',default='../../')
 parser.add_argument('--scratch', help='start training from random weights',default=False, action='store_true')
@@ -129,6 +134,10 @@ def generate_batch(args,flist,synlabel,labeltext):
                 else:
                     break
 
+            if args.centercrop:
+                side = min(img.shape[0],img.shape[1])
+                img = img[img.shape[0]//2-side//2:img.shape[0]//2+side//2,img.shape[1]//2-side//2:img.shape[1]//2+side//2]
+
             if args.alt=='alt2':
                 l[i] = synlabel[fn[0:9]]-1
                 d[i] = cv2.resize(img,dsize=(700,700),interpolation=cv2.INTER_LINEAR)
@@ -225,12 +234,13 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss()
 #torch.nn.CrossEntropyLoss(weight=None, size_average=None, ignore_index=-100, reduce=None, reduction='mean', label_smoothing=0.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1., end_factor=args.end_factor, total_iters=args.total_iters)
 #optimizer = torch.optim.Adam(model.parameters())
 #for g in optimizer.param_groups:
 #    print(type(g),g.keys(),g['lr'])
 
-q = queue.Queue(maxsize=100)
-for _ in range(20):
+q = queue.Queue(maxsize=args.workers)
+for _ in range(args.workers):
     w = Worker(q,args,flist,synlabel,labeltext)
     w.daemon = True
     w.start()
@@ -241,6 +251,8 @@ larr=[]
 garr=[]
 while i<args.train:
     (x0,y,y0,y1,y2,y3)=q.get()
+    y = np.expand_dims(y,axis=-1)
+    y = np.expand_dims(y,axis=-1)
 
     x=torch.utils.data.default_convert(x0)
     x = x.to(device)
@@ -265,6 +277,8 @@ while i<args.train:
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    if (i%args.step)==0 and i>0:
+        scheduler.step()
 
     # compute gradient
     total_norm = 0
@@ -278,7 +292,9 @@ while i<args.train:
     larr.append(loss.item())
     garr.append(total_norm)
     lr = optimizer.param_groups[0]['lr']
-    s = 'BATCH {:12d} wall {} lr {:12.10f} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f}'.format(i+1,datetime.datetime.now(),lr,loss.item(),np.mean(larr[-100:]),total_norm,np.mean(garr[-100:]))
+    #s = 'BATCH {:12d} wall {} lr {:12.10f} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f}'.format(i+1,datetime.datetime.now(),lr,loss.item(),np.mean(larr[-100:]),total_norm,np.mean(garr[-100:]))
+    s = 'BATCH {:12d} wall {} lr {:12.10f} batch {:6d} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f}'.format(
+        i,datetime.datetime.now(),lr,args.batch,loss.item(),np.mean(larr[-100:]),total_norm,np.mean(garr[-100:]))
     print(s)
     with open(args.log, 'a') as f:
         print(s,file=f)
