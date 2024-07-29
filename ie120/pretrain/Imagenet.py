@@ -6,26 +6,34 @@ class Imagenet(nn.Module):
         self.encoder = encoder
         self.alt = alt
         if alt=='alt1':
-            projection=512
-            heads=[]
-            for i in range(4):
-                head=[]
-                head.append(nn.Conv2d(512, 1000, kernel_size=(2,2), stride=1))
-                #head.append(nn.Conv2d(512, projection, kernel_size=(2,2), stride=1))
-                #head.append(nn.SELU())
-                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
-                #head.append(nn.SELU())
-                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
-                #head.append(nn.SELU())
-                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
-                #head.append(nn.SELU())
-                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
-                #head.append(nn.SELU())
-                #head.append(nn.Conv2d(projection, 1000, kernel_size=1, stride=1))
-                heads.append(nn.ModuleList(head))
+            self.head0 = nn.Conv2d(512, 1000, kernel_size=(1,1), stride=1) # 3x3 feature map
+            self.head1 = nn.Conv2d(512, 1000, kernel_size=(2,2), stride=1) # 2x2 feature map
+            self.head2 = nn.Conv2d(512, 1000, kernel_size=(3,3), stride=1) # 1x1 feature map
+            #heads=[]
+            #heads.append(nn.ModuleList([nn.Conv2d(512, 1000, kernel_size=(1,1), stride=1)])) # 3x3 feature map
+            #heads.append(nn.ModuleList([nn.Conv2d(512, 1000, kernel_size=(2,2), stride=1)])) # 2x2 feature map
+            #heads.append(nn.ModuleList([nn.Conv2d(512, 1000, kernel_size=(3,3), stride=1)])) # 1x1 feature map
 
-            self.projection = projection
-            self.heads = nn.ModuleList(heads)
+#            projection=512
+#            self.projection = projection
+#            for i in range(1+4+9):
+#                head=[]
+#                head.append(nn.Conv2d(512, 1000, kernel_size=(2,2), stride=1))
+#                #head.append(nn.Conv2d(512, 1000, kernel_size=(3,3), stride=1))
+#                #head.append(nn.Conv2d(512, projection, kernel_size=(2,2), stride=1))
+#                #head.append(nn.SELU())
+#                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
+#                #head.append(nn.SELU())
+#                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
+#                #head.append(nn.SELU())
+#                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
+#                #head.append(nn.SELU())
+#                #head.append(nn.Conv2d(projection, projection, kernel_size=1, stride=1))
+#                #head.append(nn.SELU())
+#                #head.append(nn.Conv2d(projection, 1000, kernel_size=1, stride=1))
+#                heads.append(nn.ModuleList(head))
+
+#            self.heads = nn.ModuleList(heads)
 
             #self.task = nn.Conv2d(512, 1000, kernel_size=1, stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
             #self.layer1 = nn.Conv2d(512, self.projection, kernel_size=(2,2), stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
@@ -50,7 +58,7 @@ class Imagenet(nn.Module):
             
         if alt=='alt2':
             self.projection=1000
-            self.layer1 = nn.Conv2d(512, self.projection, kernel_size=(2,2), stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
+            self.layer1 = nn.Conv2d(512, self.projection, kernel_size=(3,3), stride=1) # linearly project [3,3,512] features to [1000] classes
             self.layer1b = nn.SELU()
             self.layer2 = nn.Conv2d(self.projection, self.projection, kernel_size=1, stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
             self.layer2b = nn.SELU()
@@ -61,6 +69,8 @@ class Imagenet(nn.Module):
             #self.layer5 = nn.Conv2d(self.projection, self.projection, kernel_size=1, stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
             #self.layer5b = nn.SELU()
             self.layerl = nn.Conv2d(self.projection, 1000, kernel_size=1, stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
+
+            #self.layerl = nn.Conv2d(512, 1000, kernel_size=(2,2), stride=1) # linearly project [2,2,512] features to [2,2,1000] classes
             #decoder=1000
             #self.layer1 = nn.Flatten()
             #self.layer2 = nn.Linear(2048,1000)
@@ -101,15 +111,37 @@ class Imagenet(nn.Module):
     def forward(self, x):
         fmap = self.encoder(x)
         if self.alt=='alt1':
-            yhead=[]
-            for head in self.heads:
-                y = fmap
-                for h in head:
-                    #print('h',h,type(h),dir(h))
-                    y = h(y)
-                yhead.append(y)
-            y = torch.stack(yhead,dim=-1)
-            y = torch.reshape(y,[-1,1000,2,2])
+            y0 = self.head0(fmap)
+            y1 = self.head1(fmap)
+            y2 = self.head2(fmap)
+            y=[]
+            y.append(y2[:,:,0,0])
+            y.append(y1[:,:,0,0])
+            y.append(y1[:,:,0,1])
+            y.append(y1[:,:,1,0])
+            y.append(y1[:,:,1,1])
+            y.append(y0[:,:,0,0])
+            y.append(y0[:,:,0,1])
+            y.append(y0[:,:,0,2])
+            y.append(y0[:,:,1,0])
+            y.append(y0[:,:,1,1])
+            y.append(y0[:,:,1,2])
+            y.append(y0[:,:,2,0])
+            y.append(y0[:,:,2,1])
+            y.append(y0[:,:,2,2])
+            y = torch.stack(y,dim=-1)
+            #print('y',y.shape)
+
+#            yhead=[]
+#            for head in self.heads:
+#                y = fmap
+#                for h in head:
+#                    #print('h',h,type(h),dir(h))
+#                    y = h(y)
+#                yhead.append(y)
+#                #print('yhead',y.shape)
+#            y = torch.stack(yhead,dim=-1)
+            #y = torch.reshape(y,[-1,1000,2,2])
 
             #y = self.layer1b(self.layer1(fmap))
             #y = self.layer2b(self.layer2(y))
@@ -138,6 +170,7 @@ class Imagenet(nn.Module):
             #exit()
             return y
         if self.alt=='alt2':
+            #y = self.layerl(fmap)
             y = self.layer1b(self.layer1(fmap))
             y = self.layer2b(self.layer2(y))
             #y = self.layer3b(self.layer3(y))

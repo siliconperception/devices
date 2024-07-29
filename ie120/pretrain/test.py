@@ -18,6 +18,7 @@ import Imagenet
 from collections import namedtuple
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--device', help='cpu,cuda',default='cpu')
 parser.add_argument('--centercrop', help='crop to square',default=False, action='store_true')
 parser.add_argument('--x1', help='include 1x1 examples',default=False, action='store_true')
 parser.add_argument('--x2', help='include 2x2 examples',default=False, action='store_true')
@@ -43,7 +44,7 @@ args.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(args.se
 print(args)
 
 def generate_batch(args,flist,synlabel,labeltext,vlist):
-    d = np.zeros([args.batch,700,700,3]).astype(np.uint8)
+    d = np.zeros([args.batch,768,768,3]).astype(np.uint8)
     l = np.zeros([args.batch,2,2,1000]).astype(float) # class probabilities for 2x2 receptive fields
 
     Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
@@ -57,38 +58,38 @@ def generate_batch(args,flist,synlabel,labeltext,vlist):
 
     for i in range(args.batch):
         rf=[] # 2x2 receptive fields
-        rf.append(Rectangle((700//2)*0, (700//2)*0, (700//2)*1, (700//2)*1))
-        rf.append(Rectangle((700//2)*1, (700//2)*0, (700//2)*2, (700//2)*1))
-        rf.append(Rectangle((700//2)*0, (700//2)*1, (700//2)*1, (700//2)*2))
-        rf.append(Rectangle((700//2)*1, (700//2)*1, (700//2)*2, (700//2)*2))
+        rf.append(Rectangle((768//2)*0, (768//2)*0, (768//2)*1, (768//2)*1))
+        rf.append(Rectangle((768//2)*1, (768//2)*0, (768//2)*2, (768//2)*1))
+        rf.append(Rectangle((768//2)*0, (768//2)*1, (768//2)*1, (768//2)*2))
+        rf.append(Rectangle((768//2)*1, (768//2)*1, (768//2)*2, (768//2)*2))
 
         sc = random.choice(choices)
         ir=[] # image rectangles
         if sc=='1x1':
-            ir.append(Rectangle(0, 0, 700, 700))
+            ir.append(Rectangle(0, 0, 768, 768))
         if sc=='2x2':
-            s = (700*args.resize)//2
-            x0 = np.random.randint((700//2)-s,(700//2)+s+1)
-            y0 = np.random.randint((700//2)-s,(700//2)+s+1)
+            s = (768*args.resize)//2
+            x0 = np.random.randint((768//2)-s,(768//2)+s+1)
+            y0 = np.random.randint((768//2)-s,(768//2)+s+1)
             ir.append(Rectangle(0, 0, x0, y0))
-            ir.append(Rectangle(x0, 0, 700, y0))
-            ir.append(Rectangle(0, y0, x0, 700))
-            ir.append(Rectangle(x0, y0, 700, 700))
+            ir.append(Rectangle(x0, 0, 768, y0))
+            ir.append(Rectangle(0, y0, x0, 768))
+            ir.append(Rectangle(x0, y0, 768, 768))
         if sc=='3x3':
-            s = (700*args.resize)//3
-            x0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            x1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
-            y0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            y1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
+            s = (768*args.resize)//3
+            x0 = np.random.randint(1*(768//3)-s,1*(768//3)+s+1)
+            x1 = np.random.randint(2*(768//3)-s,2*(768//3)+s+1)
+            y0 = np.random.randint(1*(768//3)-s,1*(768//3)+s+1)
+            y1 = np.random.randint(2*(768//3)-s,2*(768//3)+s+1)
             ir.append(Rectangle(0, 0, x0, y0)) # 0
             ir.append(Rectangle(x0, 0, x1, y0)) # 1
-            ir.append(Rectangle(x1, 0, 700, y0)) # 2
+            ir.append(Rectangle(x1, 0, 768, y0)) # 2
             ir.append(Rectangle(0, y0, x0, y1)) # 3
             ir.append(Rectangle(x0, y0, x1, y1)) # 4
-            ir.append(Rectangle(x1, y0, 700, y1)) # 5
-            ir.append(Rectangle(0, y1, x0, 700)) # 6
-            ir.append(Rectangle(x0, y1, x1, 700)) # 7
-            ir.append(Rectangle(x1, y1, 700, 700)) # 8
+            ir.append(Rectangle(x1, y0, 768, y1)) # 5
+            ir.append(Rectangle(0, y1, x0, 768)) # 6
+            ir.append(Rectangle(x0, y1, x1, 768)) # 7
+            ir.append(Rectangle(x1, y1, 768, 768)) # 8
 
         # populate d[] with len(ir) images
         il=[] # image labels corresponding to ir[]
@@ -143,11 +144,11 @@ def generate_batch(args,flist,synlabel,labeltext,vlist):
     return d,l
 
 
-device = torch.device('cuda')
+device = torch.device(args.device)
 model = torch.load(args.model,map_location=device)
 model.eval() # eval mode
 if args.debug:
-    torchinfo.summary(model, input_size=(1, 3, 700, 700))
+    torchinfo.summary(model, input_size=(1, 3, 768, 768))
 #device = torch.device('cpu')
 model = model.to(device)
 print('imagenet classifier model loaded')
@@ -285,7 +286,7 @@ else:
 encoder.train() # train mode
 
 def generate_batch(args,flist,synlabel,labeltext):
-    d = np.zeros([args.batch,700,700,3]).astype(np.uint8)
+    d = np.zeros([args.batch,768,768,3]).astype(np.uint8)
     l = np.zeros([args.batch,2,2,1000]).astype(float) # class probabilities for 2x2 receptive fields
 
     Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
@@ -299,38 +300,38 @@ def generate_batch(args,flist,synlabel,labeltext):
 
     for i in range(args.batch):
         rf=[] # 2x2 receptive fields
-        rf.append(Rectangle((700//2)*0, (700//2)*0, (700//2)*1, (700//2)*1))
-        rf.append(Rectangle((700//2)*1, (700//2)*0, (700//2)*2, (700//2)*1))
-        rf.append(Rectangle((700//2)*0, (700//2)*1, (700//2)*1, (700//2)*2))
-        rf.append(Rectangle((700//2)*1, (700//2)*1, (700//2)*2, (700//2)*2))
+        rf.append(Rectangle((768//2)*0, (768//2)*0, (768//2)*1, (768//2)*1))
+        rf.append(Rectangle((768//2)*1, (768//2)*0, (768//2)*2, (768//2)*1))
+        rf.append(Rectangle((768//2)*0, (768//2)*1, (768//2)*1, (768//2)*2))
+        rf.append(Rectangle((768//2)*1, (768//2)*1, (768//2)*2, (768//2)*2))
 
         sc = random.choice(choices)
         ir=[] # image rectangles
         if sc=='1x1':
-            ir.append(Rectangle(0, 0, 700, 700))
+            ir.append(Rectangle(0, 0, 768, 768))
         if sc=='2x2':
-            s = (700*args.resize)//2
-            x0 = np.random.randint((700//2)-s,(700//2)+s+1)
-            y0 = np.random.randint((700//2)-s,(700//2)+s+1)
+            s = (768*args.resize)//2
+            x0 = np.random.randint((768//2)-s,(768//2)+s+1)
+            y0 = np.random.randint((768//2)-s,(768//2)+s+1)
             ir.append(Rectangle(0, 0, x0, y0))
-            ir.append(Rectangle(x0, 0, 700, y0))
-            ir.append(Rectangle(0, y0, x0, 700))
-            ir.append(Rectangle(x0, y0, 700, 700))
+            ir.append(Rectangle(x0, 0, 768, y0))
+            ir.append(Rectangle(0, y0, x0, 768))
+            ir.append(Rectangle(x0, y0, 768, 768))
         if sc=='3x3':
-            s = (700*args.resize)//3
-            x0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            x1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
-            y0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            y1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
+            s = (768*args.resize)//3
+            x0 = np.random.randint(1*(768//3)-s,1*(768//3)+s+1)
+            x1 = np.random.randint(2*(768//3)-s,2*(768//3)+s+1)
+            y0 = np.random.randint(1*(768//3)-s,1*(768//3)+s+1)
+            y1 = np.random.randint(2*(768//3)-s,2*(768//3)+s+1)
             ir.append(Rectangle(0, 0, x0, y0)) # 0
             ir.append(Rectangle(x0, 0, x1, y0)) # 1
-            ir.append(Rectangle(x1, 0, 700, y0)) # 2
+            ir.append(Rectangle(x1, 0, 768, y0)) # 2
             ir.append(Rectangle(0, y0, x0, y1)) # 3
             ir.append(Rectangle(x0, y0, x1, y1)) # 4
-            ir.append(Rectangle(x1, y0, 700, y1)) # 5
-            ir.append(Rectangle(0, y1, x0, 700)) # 6
-            ir.append(Rectangle(x0, y1, x1, 700)) # 7
-            ir.append(Rectangle(x1, y1, 700, 700)) # 8
+            ir.append(Rectangle(x1, y0, 768, y1)) # 5
+            ir.append(Rectangle(0, y1, x0, 768)) # 6
+            ir.append(Rectangle(x0, y1, x1, 768)) # 7
+            ir.append(Rectangle(x1, y1, 768, 768)) # 8
 
         # populate d[] with len(ir) images
         il=[] # image labels corresponding to ir[]
@@ -436,8 +437,8 @@ def generate_batch(args,flist,synlabel,labeltext):
 
 model = Imagenet.Imagenet(encoder)
 if args.debug:
-    torchinfo.summary(model, input_size=(1, 3, 700, 700))
-device = torch.device('cuda')
+    torchinfo.summary(model, input_size=(1, 3, 768, 768))
+device = torch.device('cpu')
 model = model.to(device)
 
 # Loss and optimizer
@@ -543,9 +544,9 @@ for i in range(0,len(flist),stride):
         img = cv2.imread('{}/imagenet/val/{}'.format(args.imagenet,fn.rstrip()))
         side = min(img.shape[0],img.shape[1])
         img = img[img.shape[0]//2-side//2:img.shape[0]//2+side//2,img.shape[1]//2-side//2:img.shape[1]//2+side//2]
-        img = cv2.resize(img,dsize=(700,700),interpolation=cv2.INTER_CUBIC)
+        img = cv2.resize(img,dsize=(768,768),interpolation=cv2.INTER_CUBIC)
     if args.quad:
-        img = np.zeros([700,700,3]).astype(np.uint8)
+        img = np.zeros([768,768,3]).astype(np.uint8)
         #s = random.choices(flist,k=4)
         s = flist[i:i+4]
         for j,fn in enumerate(s): #fn = 'n02487347_1956.JPEG'
@@ -636,7 +637,7 @@ print('top {} accuracy {}'.format(args.topn,np.mean(acc)))
 exit()
 
 def generate_batch(args,flist,synlabel,labeltext):
-    d = np.zeros([args.batch,700,700,3]).astype(np.uint8)
+    d = np.zeros([args.batch,768,768,3]).astype(np.uint8)
     l = np.zeros([args.batch,2,2]).astype(np.int64)
     for i in range(args.batch):
         s = random.choices(flist,k=4)
@@ -707,18 +708,18 @@ def generate_batch(args,flist,synlabel,labeltext):
                 if j==1:
                     ulx = o[0]
                     uly = 0
-                    lrx = 700
+                    lrx = 768
                     lry = o[1]
                 if j==2:
                     ulx = 0
                     uly = o[1]
                     lrx = o[0]
-                    lry = 700
+                    lry = 768
                 if j==3:
                     ulx = o[0]
                     uly = o[1]
-                    lrx = 700
-                    lry = 700
+                    lrx = 768
+                    lry = 768
                 img = cv2.resize(img,dsize=(lrx-ulx,lry-uly),interpolation=cv2.INTER_CUBIC)
                 d[i,uly:lry,ulx:lrx] = img
             else:
@@ -789,7 +790,7 @@ class Imagenet(nn.Module):
         return x
 
 def generate_batch(args,flist,synlabel,labeltext):
-    d = np.zeros([args.batch,700,700,3]).astype(np.uint8)
+    d = np.zeros([args.batch,768,768,3]).astype(np.uint8)
     l = np.zeros([args.batch,2,2]).astype(np.int64)
     for i in range(args.batch):
         s = random.choices(flist,k=4)
@@ -859,18 +860,18 @@ def generate_batch(args,flist,synlabel,labeltext):
             if j==1:
                 ulx = o[0]
                 uly = 0
-                lrx = 700
+                lrx = 768
                 lry = o[1]
             if j==2:
                 ulx = 0
                 uly = o[1]
                 lrx = o[0]
-                lry = 700
+                lry = 768
             if j==3:
                 ulx = o[0]
                 uly = o[1]
-                lrx = 700
-                lry = 700
+                lrx = 768
+                lry = 768
 
             #img = cv2.resize(img,dsize=(350,350),interpolation=cv2.INTER_LINEAR)
             #print('o',o,'f',f,'i',i,'j',j,'ulx',ulx,'uly',uly,'lrx',lrx,'lry',lry)
@@ -895,8 +896,8 @@ def generate_batch(args,flist,synlabel,labeltext):
     return d,l
 
 model = Imagenet(encoder)
-torchinfo.summary(model, input_size=(1, 3, 700, 700))
-device = torch.device('cpu')
+torchinfo.summary(model, input_size=(1, 3, 768, 768))
+device = torch.device(args.device)
 model = model.to(device)
 
 # Loss and optimizer

@@ -20,8 +20,10 @@ import subprocess
 from collections import namedtuple
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--roi', help='input image x/y size',default=768, type=int)
+parser.add_argument('--alt', help='encoder model alt type',default='alt1')
 parser.add_argument('--centercrop', help='crop to square',default=False, action='store_true')
-parser.add_argument('--step', help='LR scheduler batches per step',default=10000, type=int)
+parser.add_argument('--step', help='LR scheduler batches per step',default=1000000000, type=int)
 parser.add_argument('--end_factor', help='LR linear schedule parameter',default=1./50, type=float)
 parser.add_argument('--total_iters', help='LR linear schedule parameter',default=10, type=float)
 parser.add_argument('--x1', help='include 1x1 examples',default=False, action='store_true')
@@ -50,8 +52,6 @@ if args.log is None:
     args.date = args.date.rstrip()
     args.log = 'checkpoint/log.{}'.format(args.date)
 print(args)
-with open(args.log, 'a') as f:
-    print(args,file=f)
 
 synlabel={}
 labeltext={}
@@ -77,52 +77,56 @@ else:
 encoder.train() # train mode
 
 def generate_batch(args,flist,synlabel,labeltext):
-    d = np.zeros([args.batch,700,700,3]).astype(np.uint8)
-    l = np.zeros([args.batch,2,2,1000]).astype(float) # class probabilities for 2x2 receptive fields
+    d = np.zeros([args.batch,args.roi,args.roi,3]).astype(np.uint8)
+    #l = np.zeros([args.batch,2,2,1000]).astype(float) # class probabilities for 2x2 receptive fields
+    l0 = np.zeros([args.batch,1000,3,3]).astype(float) # class probabilities 3x3 feature map
+    l1 = np.zeros([args.batch,1000,2,2]).astype(float) # class probabilities 2x2 feature map
+    l2 = np.zeros([args.batch,1000,1,1]).astype(float) # class probabilities 1x1 feature map
 
     Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
     choices = []
     if args.x1:
-        choices.append('1x1')
+        choices.extend(1*['1x1'])
     if args.x2:
-        choices.append('2x2')
+        choices.extend(4*['2x2'])
     if args.x3:
-        choices.append('3x3')
+        choices.extend(9*['3x3'])
 
     for i in range(args.batch):
-        rf=[] # 2x2 receptive fields
-        rf.append(Rectangle((700//2)*0, (700//2)*0, (700//2)*1, (700//2)*1))
-        rf.append(Rectangle((700//2)*1, (700//2)*0, (700//2)*2, (700//2)*1))
-        rf.append(Rectangle((700//2)*0, (700//2)*1, (700//2)*1, (700//2)*2))
-        rf.append(Rectangle((700//2)*1, (700//2)*1, (700//2)*2, (700//2)*2))
+        #rf=[] # 2x2 receptive fields
+        #rf.append(Rectangle((700//2)*0, (700//2)*0, (700//2)*1, (700//2)*1))
+        #rf.append(Rectangle((700//2)*1, (700//2)*0, (700//2)*2, (700//2)*1))
+        #rf.append(Rectangle((700//2)*0, (700//2)*1, (700//2)*1, (700//2)*2))
+        #rf.append(Rectangle((700//2)*1, (700//2)*1, (700//2)*2, (700//2)*2))
 
         sc = random.choice(choices)
         ir=[] # image rectangles
+        roi=args.roi
         if sc=='1x1':
-            ir.append(Rectangle(0, 0, 700, 700))
+            ir.append(Rectangle(0, 0, roi, roi))
         if sc=='2x2':
-            s = (700*args.resize)//2
-            x0 = np.random.randint((700//2)-s,(700//2)+s+1)
-            y0 = np.random.randint((700//2)-s,(700//2)+s+1)
+            s = (roi*args.resize)//2
+            x0 = np.random.randint((roi//2)-s,(roi//2)+s+1)
+            y0 = np.random.randint((roi//2)-s,(roi//2)+s+1)
             ir.append(Rectangle(0, 0, x0, y0))
-            ir.append(Rectangle(x0, 0, 700, y0))
-            ir.append(Rectangle(0, y0, x0, 700))
-            ir.append(Rectangle(x0, y0, 700, 700))
+            ir.append(Rectangle(x0, 0, roi, y0))
+            ir.append(Rectangle(0, y0, x0, roi))
+            ir.append(Rectangle(x0, y0, roi, roi))
         if sc=='3x3':
-            s = (700*args.resize)//3
-            x0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            x1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
-            y0 = np.random.randint(1*(700//3)-s,1*(700//3)+s+1)
-            y1 = np.random.randint(2*(700//3)-s,2*(700//3)+s+1)
+            s = (roi*args.resize)//3
+            x0 = np.random.randint(1*(roi//3)-s,1*(roi//3)+s+1)
+            x1 = np.random.randint(2*(roi//3)-s,2*(roi//3)+s+1)
+            y0 = np.random.randint(1*(roi//3)-s,1*(roi//3)+s+1)
+            y1 = np.random.randint(2*(roi//3)-s,2*(roi//3)+s+1)
             ir.append(Rectangle(0, 0, x0, y0)) # 0
             ir.append(Rectangle(x0, 0, x1, y0)) # 1
-            ir.append(Rectangle(x1, 0, 700, y0)) # 2
+            ir.append(Rectangle(x1, 0, roi, y0)) # 2
             ir.append(Rectangle(0, y0, x0, y1)) # 3
             ir.append(Rectangle(x0, y0, x1, y1)) # 4
-            ir.append(Rectangle(x1, y0, 700, y1)) # 5
-            ir.append(Rectangle(0, y1, x0, 700)) # 6
-            ir.append(Rectangle(x0, y1, x1, 700)) # 7
-            ir.append(Rectangle(x1, y1, 700, 700)) # 8
+            ir.append(Rectangle(x1, y0, roi, y1)) # 5
+            ir.append(Rectangle(0, y1, x0, roi)) # 6
+            ir.append(Rectangle(x0, y1, x1, roi)) # 7
+            ir.append(Rectangle(x1, y1, roi, roi)) # 8
 
         # populate d[] with len(ir) images
         il=[] # image labels corresponding to ir[]
@@ -153,32 +157,76 @@ def generate_batch(args,flist,synlabel,labeltext):
 
         # for each rf, populate l[] with len(ir) [0,1] probabilities based on overlap between rf and ir rectangles
         if sc=='1x1':
-            l[i,0,0,il[0]] = 0.25
-            l[i,0,1,il[0]] = 0.25
-            l[i,1,0,il[0]] = 0.25
-            l[i,1,1,il[0]] = 0.25
+            l2[i,il[0],0,0] = 1
         if sc=='2x2':
-            l[i,0,0,il[0]] = 1.0
-            l[i,0,1,il[1]] = 1.0
-            l[i,1,0,il[2]] = 1.0
-            l[i,1,1,il[3]] = 1.0
+            l1[i,il[0],0,0] = 1
+            l1[i,il[1],0,1] = 1
+            l1[i,il[2],1,0] = 1
+            l1[i,il[3],1,1] = 1
         if sc=='3x3':
-            l[i,0,0,il[0]] = 1.0
-            l[i,0,0,il[1]] = 0.5
-            l[i,0,0,il[3]] = 0.5
-            l[i,0,0,il[4]] = 0.25
-            l[i,0,1,il[2]] = 1.0
-            l[i,0,1,il[1]] = 0.5
-            l[i,0,1,il[5]] = 0.5
-            l[i,0,1,il[4]] = 0.25
-            l[i,1,0,il[6]] = 1.0
-            l[i,1,0,il[3]] = 0.5
-            l[i,1,0,il[7]] = 0.5
-            l[i,1,0,il[4]] = 0.25
-            l[i,1,1,il[8]] = 1.0
-            l[i,1,1,il[5]] = 0.5
-            l[i,1,1,il[7]] = 0.5
-            l[i,1,1,il[4]] = 0.25
+            l0[i,il[0],0,0] = 1
+            l0[i,il[1],0,1] = 1
+            l0[i,il[2],0,2] = 1
+            l0[i,il[3],1,0] = 1
+            l0[i,il[4],1,1] = 1
+            l0[i,il[5],1,2] = 1
+            l0[i,il[6],2,0] = 1
+            l0[i,il[7],2,1] = 1
+            l0[i,il[8],2,2] = 1
+
+#        if sc=='1x1':
+#            for ll in range(1):
+#                l[i,il[ll],ll] = 1.0
+#        if sc=='2x2':
+#            for ll in range(4):
+#                l[i,il[ll],1+ll] = 1.0
+#        if sc=='3x3':
+#            for ll in range(9):
+#                l[i,il[ll],1+4+ll] = 1.0
+
+#        if sc=='1x1':
+#            for rr in range(2):
+#                for cc in range(2):
+#                    for ll in range(1):
+#                        l[i,rr,cc,il[ll]] = 1.0
+#        if sc=='2x2':
+#            for rr in range(2):
+#                for cc in range(2):
+#                    for ll in range(4):
+#                        l[i,rr,cc,il[ll]] = 1.0
+#        if sc=='3x3':
+#            for rr in range(2):
+#                for cc in range(2):
+#                    for ll in range(9):
+#                        l[i,rr,cc,il[ll]] = 1.0
+
+#        if sc=='1x1':
+#            l[i,0,0,il[0]] = 0.25
+#            l[i,0,1,il[0]] = 0.25
+#            l[i,1,0,il[0]] = 0.25
+#            l[i,1,1,il[0]] = 0.25
+#        if sc=='2x2':
+#            l[i,0,0,il[0]] = 1.0
+#            l[i,0,1,il[1]] = 1.0
+#            l[i,1,0,il[2]] = 1.0
+#            l[i,1,1,il[3]] = 1.0
+#        if sc=='3x3':
+#            l[i,0,0,il[0]] = 1.0
+#            l[i,0,0,il[1]] = 0.5
+#            l[i,0,0,il[3]] = 0.5
+#            l[i,0,0,il[4]] = 0.25
+#            l[i,0,1,il[2]] = 1.0
+#            l[i,0,1,il[1]] = 0.5
+#            l[i,0,1,il[5]] = 0.5
+#            l[i,0,1,il[4]] = 0.25
+#            l[i,1,0,il[6]] = 1.0
+#            l[i,1,0,il[3]] = 0.5
+#            l[i,1,0,il[7]] = 0.5
+#            l[i,1,0,il[4]] = 0.25
+#            l[i,1,1,il[8]] = 1.0
+#            l[i,1,1,il[5]] = 0.5
+#            l[i,1,1,il[7]] = 0.5
+#            l[i,1,1,il[4]] = 0.25
 
 #        if sc=='1x1':
 #            l[i,0,0,il[0]] = 0.25
@@ -221,7 +269,24 @@ def generate_batch(args,flist,synlabel,labeltext):
 
     d = d.astype(np.float32)/255.
     d = np.rollaxis(d,-1,1)
-    l = np.rollaxis(l,-1,1)
+    #l = np.rollaxis(l,-1,1)
+    #return d,l
+    l=[]
+    l.append(l2[:,:,0,0])
+    l.append(l1[:,:,0,0])
+    l.append(l1[:,:,0,1])
+    l.append(l1[:,:,1,0])
+    l.append(l1[:,:,1,1])
+    l.append(l0[:,:,0,0])
+    l.append(l0[:,:,0,1])
+    l.append(l0[:,:,0,2])
+    l.append(l0[:,:,1,0])
+    l.append(l0[:,:,1,1])
+    l.append(l0[:,:,1,2])
+    l.append(l0[:,:,2,0])
+    l.append(l0[:,:,2,1])
+    l.append(l0[:,:,2,2])
+    l = np.stack(l,axis=-1)
     return d,l
 
 #class Worker(threading.Thread):
@@ -238,9 +303,12 @@ def generate_batch(args,flist,synlabel,labeltext):
 #            (d,l) = generate_batch(self.args,self.flist,self.synlabel,self.labeltext)
 #            q.put((d,l))
 
-model = Imagenet.Imagenet(encoder)
+model = Imagenet.Imagenet(encoder,alt=args.alt)
+with open(args.log, 'a') as f:
+    print(args,file=f)
+    print(torchinfo.summary(model, input_size=(1, 3, args.roi, args.roi)),file=f)
 if args.debug:
-    torchinfo.summary(model, input_size=(1, 3, 700, 700))
+    torchinfo.summary(model, input_size=(1, 3, args.roi, args.roi))
 device = torch.device('cuda')
 model = model.to(device)
 
@@ -271,14 +339,19 @@ larr=[]
 garr=[]
 while i<1+args.train:
     (x0,y0)=q.get()
+    #print('y0',y0.shape)
 
     x=torch.utils.data.default_convert(x0)
     x = x.to(device)
     y=torch.utils.data.default_convert(y0)
+    #y = y.reshape([-1, 1000, 14])
     y = y.to(device)
      
     logits = model(x)
-    loss = criterion(logits, y)
+    #logits = logits.reshape([-1, 1000, 14])
+    #print('logits',logits.shape,'y',y.shape)
+    loss = criterion(logits,y)
+    #loss *= 1+4+9
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
