@@ -42,7 +42,7 @@ parser.add_argument('--x2', help='include 2x2 examples',default=False, action='s
 parser.add_argument('--x3', help='include 3x3 examples',default=False, action='store_true')
 parser.add_argument('--workers', help='number of threads for batch generation',default=20, type=int)
 parser.add_argument('--resize', help='resize scale',default=0.0, type=float)
-parser.add_argument('--imagenet', help='imagenet dataset base directory',default='../../')
+parser.add_argument('--imagenet', help='imagenet dataset base directory',default='../')
 parser.add_argument('--scratch', help='start training from random weights',default=False, action='store_true')
 parser.add_argument('--checkpoint', help='save timestamped checkpoint every 100000 batches',default=False, action='store_true')
 parser.add_argument('--log', help='log file name',default=None)
