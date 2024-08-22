@@ -5,7 +5,8 @@ import collections
 class IE120(nn.Module):
     def __init__(self, alt='alt1'):
         super(IE120, self).__init__()
-        if alt=='alt1':
+        self.alt=alt
+        if self.alt=='alt1':
             self.layer1  = nn.Sequential(nn.Conv2d(3, 16, kernel_size=3, stride=2), nn.BatchNorm2d(16), nn.ReLU())
             self.layer2  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=3, stride=1), nn.BatchNorm2d(16), nn.ReLU())
             self.layer3  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=3, stride=1), nn.BatchNorm2d(16), nn.ReLU())
@@ -25,25 +26,43 @@ class IE120(nn.Module):
             self.layer17 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
             self.layer18 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
 
-        if alt=='alt2':
-            self.layer1  = nn.Sequential(nn.Conv2d(3, 32, kernel_size=3, stride=2), nn.BatchNorm2d(32), nn.ReLU())
-            self.layer2  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=3, stride=1), nn.BatchNorm2d(32), nn.ReLU())
-            self.layer3  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=3, stride=1), nn.BatchNorm2d(32), nn.ReLU())
-            self.layer4  = nn.Sequential(nn.Conv2d(32, 64, kernel_size=3, stride=2), nn.BatchNorm2d(64), nn.ReLU())
-            self.layer5  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.BatchNorm2d(64), nn.ReLU())
-            self.layer6  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.BatchNorm2d(64), nn.ReLU())
-            self.layer7  = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, stride=2), nn.BatchNorm2d(128), nn.ReLU())
-            self.layer8  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=3, stride=1), nn.BatchNorm2d(128), nn.ReLU())
-            self.layer9  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=3, stride=1), nn.BatchNorm2d(128), nn.ReLU())
-            self.layer10 = nn.Sequential(nn.Conv2d(128, 256, kernel_size=3, stride=2), nn.BatchNorm2d(256), nn.ReLU())
-            self.layer11 = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1), nn.BatchNorm2d(256), nn.ReLU())
-            self.layer12 = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1), nn.BatchNorm2d(256), nn.ReLU())
-            self.layer13 = nn.Sequential(nn.Conv2d(256, 512, kernel_size=3, stride=2), nn.BatchNorm2d(512), nn.ReLU())
-            self.layer14 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
-            self.layer15 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
-            self.layer16 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=2), nn.BatchNorm2d(512), nn.ReLU())
-            self.layer17 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
-            self.layer18 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
+        if self.alt=='alt2':
+            self.layer1  = nn.Sequential(nn.Conv2d(3, 16, kernel_size=5, stride=2), nn.BatchNorm2d(16), nn.ReLU())
+            self.layer2  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=3, stride=1), nn.BatchNorm2d(16), nn.ReLU())
+            self.layer3  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=2, stride=1), nn.BatchNorm2d(16), nn.ReLU())
+            self.layer4  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=1, stride=1), nn.BatchNorm2d(16), nn.ReLU())
+            self.layer5  = nn.Sequential(nn.Conv2d(16, 16, kernel_size=1, stride=1), nn.BatchNorm2d(16), nn.ReLU())
+
+            self.layer6  = nn.Sequential(nn.Conv2d(16, 32, kernel_size=5, stride=2), nn.BatchNorm2d(32), nn.ReLU())
+            self.layer7  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=3, stride=1), nn.BatchNorm2d(32), nn.ReLU())
+            self.layer8  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=2, stride=1), nn.BatchNorm2d(32), nn.ReLU())
+            self.layer9  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=1, stride=1), nn.BatchNorm2d(32), nn.ReLU())
+            self.layer10  = nn.Sequential(nn.Conv2d(32, 32, kernel_size=1, stride=1), nn.BatchNorm2d(32), nn.ReLU())
+
+            self.layer11  = nn.Sequential(nn.Conv2d(32, 64, kernel_size=5, stride=2), nn.BatchNorm2d(64), nn.ReLU())
+            self.layer12  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.BatchNorm2d(64), nn.ReLU())
+            self.layer13  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=2, stride=1), nn.BatchNorm2d(64), nn.ReLU())
+            self.layer14  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, stride=1), nn.BatchNorm2d(64), nn.ReLU())
+            self.layer15  = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, stride=1), nn.BatchNorm2d(64), nn.ReLU())
+
+            self.layer16  = nn.Sequential(nn.Conv2d(64, 128, kernel_size=5, stride=2), nn.BatchNorm2d(128), nn.ReLU())
+            self.layer17  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=3, stride=1), nn.BatchNorm2d(128), nn.ReLU())
+            self.layer18  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=2, stride=1), nn.BatchNorm2d(128), nn.ReLU())
+            self.layer19  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=1, stride=1), nn.BatchNorm2d(128), nn.ReLU())
+            self.layer20  = nn.Sequential(nn.Conv2d(128, 128, kernel_size=1, stride=1), nn.BatchNorm2d(128), nn.ReLU())
+
+            self.layer21  = nn.Sequential(nn.Conv2d(128, 256, kernel_size=5, stride=2), nn.BatchNorm2d(256), nn.ReLU())
+            self.layer22  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1), nn.BatchNorm2d(256), nn.ReLU())
+            self.layer23  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=2, stride=1), nn.BatchNorm2d(256), nn.ReLU())
+            self.layer24  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=1, stride=1), nn.BatchNorm2d(256), nn.ReLU())
+            self.layer25  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=1, stride=1), nn.BatchNorm2d(256), nn.ReLU())
+
+            self.layer26  = nn.Sequential(nn.Conv2d(256, 512, kernel_size=5, stride=2), nn.BatchNorm2d(512), nn.ReLU())
+            self.layer27  = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1), nn.BatchNorm2d(512), nn.ReLU())
+            self.layer28  = nn.Sequential(nn.Conv2d(512, 512, kernel_size=2, stride=1), nn.BatchNorm2d(512), nn.ReLU())
+            self.layer29  = nn.Sequential(nn.Conv2d(512, 512, kernel_size=1, stride=1), nn.BatchNorm2d(512), nn.ReLU())
+            self.layer30  = nn.Sequential(nn.Conv2d(512, 512, kernel_size=1, stride=1), nn.BatchNorm2d(512), nn.ReLU())
+
 
     def forward(self, x):
         out = self.layer1(x)
@@ -64,6 +83,19 @@ class IE120(nn.Module):
         out = self.layer16(out)
         out = self.layer17(out)
         out = self.layer18(out)
+        if self.alt=='alt2':
+            out = self.layer19(out)
+            out = self.layer20(out)
+            out = self.layer21(out)
+            out = self.layer22(out)
+            out = self.layer23(out)
+            out = self.layer24(out)
+            out = self.layer25(out)
+            out = self.layer26(out)
+            out = self.layer27(out)
+            out = self.layer28(out)
+            out = self.layer29(out)
+            out = self.layer30(out)
         return out
 
     def fuse_conv_and_bn(self,conv,bn):

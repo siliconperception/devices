@@ -51,6 +51,8 @@ if args.log is None:
         os.makedirs('log')
     args.log = 'log/log.{}'.format(args.date)
 print(args)
+with open(args.log, 'a') as f:
+    print('ARGS',args,file=f)
 
 encoder = ie120.IE120(args.alt)
 print('image encoder model initialized')
