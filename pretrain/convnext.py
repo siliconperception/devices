@@ -17,9 +17,10 @@ import subprocess
 import os
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--saveinterval', help='push to HF every saveinterval batches',default=100000, type=int)
 parser.add_argument('--slide', help='slide training data distribution if gradient greater',default=-1, type=float)
 #parser.add_argument('--cycle', help='cycle through samples',default=False, action='store_true')
-parser.add_argument('--shuffle', help='shuffle flist every args.shuffle batches',default=-1, type=int)
+#parser.add_argument('--shuffle', help='shuffle flist every args.shuffle batches',default=-1, type=int)
 parser.add_argument('--nsamples', help='size of flist in samples',default=-1, type=int)
 parser.add_argument('--lr2', help='learning rate distribution parameter',default=0.1, type=float)
 parser.add_argument('--warmup', help='number of batches at initial LR',default=0, type=int)
@@ -409,8 +410,8 @@ if args.train:
             else:
                 scheduler.step()
     
-        if (args.shuffle>0) and (i%args.shuffle)==0:
-            dataset.shuffle()
+        #if (args.shuffle>0) and (i%args.shuffle)==0:
+        #    dataset.shuffle()
         #if (args.slide>0) and (gavg>args.slide):
         #if (args.slide>0) and (lavg<args.slide):
         if (args.slide>0) and (i%(int(args.slide)))==0:
@@ -432,13 +433,10 @@ if args.train:
         with open(args.log, 'a') as f:
             print(s,file=f)
         
-        if args.shuffle<0:
-            saveinterval=1000
-        else:
-            saveinterval=args.shuffle
-        if args.save is not None and (i%saveinterval)==0:
+        if args.save is not None and (i%args.saveinterval)==0:
             torch.save(encoder.state_dict(), '{}'.format(args.save))
             encoder.save_pretrained('ie120nx_{}'.format(siliconperception.__version__))
+            encoder.push_to_hub("siliconperception/IE120NX")
     
         if args.show:
             if (i%100)==0:
