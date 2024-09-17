@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "siliconperception"
+version = "0.0.3"
+authors = [
+  { name="Rob Liston", email="rliston@siliconperception.com" },
+]
+description = "Single chip image encoder models with pretrained weights from HuggingFace"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://www.siliconperception.com"
+Issues = "https://github.com/siliconperception/models"

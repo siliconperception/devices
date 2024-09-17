@@ -1,2 +1,2 @@
 # models
-PyTorch models for Silicon Perception image encoders
+PyTorch models for Silicon Perception single chip image encoders
