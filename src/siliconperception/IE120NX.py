@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from huggingface_hub import PyTorchModelHubMixin
+from collections import OrderedDict
 
 # PyTorch model for Silicon Perception IE120-NX single chip image encoder, which executes the model at 200 frames/s with 150us latency
 # www.siliconperception.com
@@ -66,7 +67,7 @@ class IE120NX(
 
     def fuse_save(self, fn):
         # merge BN with previous Conv2D
-        enc = nn.Sequential(collections.OrderedDict([
+        enc = nn.Sequential(OrderedDict([
           ('conv1', self.fuse_conv_and_bn(self.layer1[0],self.layer1[1])), ('relu1', nn.ReLU()),
           ('conv2', self.fuse_conv_and_bn(self.layer2[0],self.layer2[1])), ('relu2', nn.ReLU()),
           ('conv3', self.fuse_conv_and_bn(self.layer3[0],self.layer3[1])), ('relu3', nn.ReLU()),
