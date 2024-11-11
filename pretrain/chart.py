@@ -41,6 +41,11 @@ bloss=arr[11]
 loss=arr[12]
 bgrad=arr[14]
 grad=arr[15]
+mse=arr[19]
+fmapm=arr[21]
+fmaps=arr[22]
+refm=arr[24]
+refs=arr[25]
 #mom=arr[19]
 #n=arr[0]
 #lr=arr[5]
@@ -56,20 +61,33 @@ grad=arr[15]
 
 fig = plt.figure(figsize=(10,40))
 ax1 = fig.add_subplot(3,1,1)
+#ax1.set_yticks(np.arange(0,5))
+#ax1.set_yscale('log')
+ax1b = ax1.twinx()
 ax2 = fig.add_subplot(3,1,2,sharex=ax1)
+ax2b = ax2.twinx()
 ax3 = fig.add_subplot(3,1,3,sharex=ax1)
 #ax3b = ax3.twinx()
 #ax1.set_ylim(np.mean(bloss)-args.sigma*np.std(bloss),np.mean(bloss)+args.sigma*np.std(bloss))
-ax1.set_ylim(0,np.mean(bloss)+args.sigma*np.std(bloss))
+#ax1.set_ylim(0,np.mean(bloss)+args.sigma*np.std(bloss))
+
+ax1.set_ylim(bottom=0.0,top=10000.0)
 ax1.scatter(n,bloss[0:len(n)],marker='.',color='k',s=0.1,alpha=0.1)
-ax1.plot(n, loss[0:len(n)], '-g', linewidth=1)
+ax1.plot(n, loss[0:len(n)], '-g', linewidth=1,alpha=0.5)
 ax1.axhline(y=np.min(bloss[0:len(n)]), color='green', linestyle=':',linewidth=1,label='min')
-#ax1.scatter(n,loss[0:len(n)],marker='.',color='g',s=0.1,alpha=0.8)
+#ax1b.plot(n, mse[0:len(n)], '-c', linewidth=1,alpha=0.5)
+ax1b.set_ylim(bottom=0.0,top=1.0)
+ax1b.scatter(n,mse[0:len(n)],marker='.',color='purple',s=0.1,alpha=0.1)
 #ax2.set_ylim(0,grad[args.start])
 ax2.set_ylim(0,np.mean(bgrad)+args.sigma*np.std(bgrad))
 ax2.scatter(n,bgrad[0:len(n)],marker='.',color='k',s=0.1,alpha=0.1)
-ax2.plot(n, grad[0:len(n)], '-b', linewidth=1)
-ax3.scatter(n,lr[0:len(n)],marker='.',color='r',s=0.2,alpha=1)
+ax2.plot(n, grad[0:len(n)], '-b', linewidth=1,alpha=0.5)
+ax2b.plot(n, lr[0:len(n)], '-k', linewidth=1,alpha=0.5)
+ax3.scatter(n,refm[0:len(n)],marker='.',color='k',s=0.2,alpha=0.1)
+ax3.scatter(n,refs[0:len(n)],marker='.',color='k',s=0.2,alpha=0.1)
+ax3.scatter(n,fmapm[0:len(n)],marker='.',color='purple',s=0.2,alpha=0.1)
+ax3.scatter(n,fmaps[0:len(n)],marker='.',color='r',s=0.2,alpha=0.1)
+#ax3.scatter(n,lr[0:len(n)],marker='.',color='r',s=0.2,alpha=1)
 #ax3.plot(n,lr[0:len(n)], '-r', linewidth=1)
 #ax3b.plot(n,mom[0:len(n)], '-m', linewidth=1)
 #ax2.scatter(n,grad[0:len(n)],marker='.',color='b',s=0.1,alpha=0.8)
