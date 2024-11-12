@@ -1,8 +1,15 @@
 default:
-	echo "make convnext imagenet"
+	echo "make pretrain finetune"
 
-imagenet:
-	python imagenet.py --lr 0.0001 --train --test --roi 768 --batch 10 --opt adamw --weight_decay 0.01 --freeze
+pretrain_encoder:
+	python resnet.py --opt adamw --weight_decay 0.0 --mode pretrain --workers 12 --batch 20 --save ie120r_res18.pt --show --verbose --loss pdist --sched cos --lr 0.001 --step 100 --eta_min 0.00001 --tmax 100 --alt medium
 
-convnext:
-	python convnext.py --loss hyb --show --lr 0.0001 --opt adamw --weight_decay 0.01 --train --batch 10 --save ie-convnext-scratch.pt --avg 1000 --centercrop --nsamples 50000 --slide 100 --sched plat --step 10000 --factor 0.9 --saveinterval 100000
+finetune_encoder:
+	python resnet.py --lr 0.00001 --mode finetune_encoder --encoder ie120r_res18.pt --workers 10 --batch 20 --verbose --nbatch 10000
+
+finetune_pretrained:
+	python resnet.py --lr 0.00001 --mode finetune_encoder --pretrained --workers 10 --batch 20 --verbose --nbatch 10000
+
+finetune_resnet18:
+	time python resnet.py --lr 0.00001 --mode finetune_resnet18 --workers 10 --batch 20 --verbose --nbatch 10000
+
