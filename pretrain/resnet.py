@@ -72,20 +72,22 @@ with open(args.log, 'a') as f:
     print('ARGS',args,file=f)
 
 # --------------------------------------------------------------------------------------------------------------------------
-if args.mode=='finetune_resnet18' or args.mode=='pretrain':
-    resnet18 = timm.create_model('resnet18.a1_in1k', pretrained=True, features_only=True)
-    for param in resnet18.parameters():
-        param.requires_grad = False
-    resnet18 = resnet18.eval()
-    data_config = timm.data.resolve_model_data_config(resnet18)
-    transforms = timm.data.create_transform(**data_config, is_training=False)
-    print('resnet18 image encoder model loaded')
-    if args.verbose:
-        s=torchinfo.summary(resnet18,col_names=["input_size","output_size","num_params"],input_size=(1,3,224,224))
-        print('RESNET-18',s)
-        with open(args.log, 'a') as f:
-            print('RESNET-18',s,file=f)
-    resnet18 = resnet18.to(args.device)
+resnet18 = timm.create_model('resnet18.a1_in1k', pretrained=True, features_only=True)
+for param in resnet18.parameters():
+    param.requires_grad = False
+resnet18 = resnet18.eval()
+print('resnet18 image encoder model loaded')
+if args.verbose:
+    s=torchinfo.summary(resnet18,col_names=["input_size","output_size","num_params"],input_size=(1,3,224,224))
+    print('RESNET-18',s)
+    with open(args.log, 'a') as f:
+        print('RESNET-18',s,file=f)
+resnet18 = resnet18.to(args.device)
+
+data_config = timm.data.resolve_model_data_config(resnet18)
+transforms = timm.data.create_transform(**data_config, is_training=False)
+dmean = transforms.transforms[-1].mean.numpy()
+dstd = transforms.transforms[-1].std.numpy()
 
 # --------------------------------------------------------------------------------------------------------------------------
 if args.mode=='finetune_encoder' or args.mode=='pretrain':
@@ -179,18 +181,12 @@ stop = threading.Event()
 stop.clear()
 workers=[]
 if args.mode=='finetune_resnet18':
-    dmean = transforms.transforms[-1].mean.numpy()
-    dstd = transforms.transforms[-1].std.numpy()
     roi=224
     labeltype='imagenet'
 if args.mode=='finetune_encoder':
-    dmean = 0
-    dstd = 1
     roi=896
     labeltype='imagenet'
 if args.mode=='pretrain':
-    dmean = transforms.transforms[-1].mean.numpy()
-    dstd = transforms.transforms[-1].std.numpy()
     roi=896
     labeltype='resnet18'
 q0 = queue.Queue(maxsize=args.workers)
