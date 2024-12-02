@@ -18,15 +18,15 @@ import os
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--saveinterval', help='push to HF every saveinterval batches',default=100000, type=int)
-parser.add_argument('--slide', help='slide training data distribution if gradient greater',default=-1, type=float)
+#parser.add_argument('--slide', help='slide training data distribution if gradient greater',default=-1, type=float)
 #parser.add_argument('--cycle', help='cycle through samples',default=False, action='store_true')
 #parser.add_argument('--shuffle', help='shuffle flist every args.shuffle batches',default=-1, type=int)
-parser.add_argument('--nsamples', help='size of flist in samples',default=-1, type=int)
+#parser.add_argument('--nsamples', help='size of flist in samples',default=-1, type=int)
 parser.add_argument('--lr2', help='learning rate distribution parameter',default=0.1, type=float)
 parser.add_argument('--warmup', help='number of batches at initial LR',default=0, type=int)
 parser.add_argument('--stub', help='generate stub for perceptron',default=False, action='store_true')
 #parser.add_argument('--nf_llim', help='loss threshold for flist bump',default=0.01, type=float)
-parser.add_argument('--min_lr', help='minimum learning rate',default=0.0001, type=float)
+parser.add_argument('--min_lr', help='minimum learning rate',default=0.00001, type=float)
 parser.add_argument('--patience', help='LR param',default=10, type=int)
 parser.add_argument('--loss', help='loss function',default='bce')
 #parser.add_argument('--prec', help='scaling factor for reference model output in sigma',default=2, type=float)
@@ -139,8 +139,8 @@ class Batch:
     def shuffle(self):
         random.shuffle(self.flist)
 
-    def slide(self):
-        self.origin = (self.origin+1) % (len(self.flist)-args.nsamples)
+    #def slide(self):
+    #    self.origin = (self.origin+1) % (len(self.flist)-args.nsamples)
 
     def generate_batch(self,args,show=False,noise=False):
         dimg = np.zeros([args.batch,args.roi,args.roi,3]).astype(np.uint8)
@@ -191,8 +191,8 @@ class Batch:
             # populate dimg[] with len(ir) images
             for r in ir:
                 while True:
-                    fn = random.choice(self.flist[self.origin:self.origin+args.nsamples])
-                    #fn = random.choice(self.flist)
+                    #fn = random.choice(self.flist[self.origin:self.origin+args.nsamples])
+                    fn = random.choice(self.flist)
                     img = cv2.imread('{}/imagenet/train/{}'.format(args.imagenet,fn.rstrip()))
                     if img is not None:
                         break
@@ -403,10 +403,8 @@ if args.train:
         #        dataset.bump_flist()
         # LR scheduler
         if (i%args.step)==0:
-            if args.sched=='grad':
-                scheduler.step(gavg)
             if args.sched=='plat':
-                scheduler.step(gavg)
+                scheduler.step(lavg)
             else:
                 scheduler.step()
     
@@ -414,8 +412,8 @@ if args.train:
         #    dataset.shuffle()
         #if (args.slide>0) and (gavg>args.slide):
         #if (args.slide>0) and (lavg<args.slide):
-        if (args.slide>0) and (i%(int(args.slide)))==0:
-            dataset.slide()
+        #if (args.slide>0) and (i%(int(args.slide)))==0:
+        #    dataset.slide()
 
         # print batch statistics
         lr = optimizer.param_groups[0]['lr']
@@ -427,8 +425,8 @@ if args.train:
         #if args.loss=='hyb':
         #    s = 'BATCH {:12d} wall {} lr {:12.10f} wd {:12.10f} batch {:6d} loss {:12.6f} {:12.6f} {:12.6f} grad {:12.6f} {:12.6f} opt {:15} fmap {:12.6f} {:12.6f} ref {:12.6f} {:12.6f} ns {:9d}'.format(
         #    i,datetime.datetime.now(),lr,args.weight_decay,args.batch,lavg1,lavg2,lavg3,total_norm,gavg,args.opt+'_'+args.loss+'_'+args.sched,torch.mean(fmap),torch.std(fmap),np.mean(y0),np.std(y0),args.nsamples)
-        s = 'BATCH {:12d} wall {} lr {:12.10f} wd {:12.10f} batch {:6d} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f} opt {:15} fmap {:12.6f} {:12.6f} ref {:12.6f} {:12.6f} ns {:9d} {:9d}'.format(
-        i,datetime.datetime.now(),lr,args.weight_decay,args.batch,loss.item(),lavg,total_norm,gavg,args.opt+'_'+args.loss+'_'+args.sched,torch.mean(fmap),torch.std(fmap),np.mean(y0),np.std(y0),args.nsamples,dataset.origin)
+        s = 'BATCH {:12d} wall {} lr {:12.10f} wd {:12.10f} batch {:6d} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f} opt {:15} fmap {:12.6f} {:12.6f} ref {:12.6f} {:12.6f}'.format(
+        i,datetime.datetime.now(),lr,args.weight_decay,args.batch,loss.item(),lavg,total_norm,gavg,args.opt+'_'+args.loss+'_'+args.sched,torch.mean(fmap),torch.std(fmap),np.mean(y0),np.std(y0))
         print(s)
         with open(args.log, 'a') as f:
             print(s,file=f)

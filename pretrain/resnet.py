@@ -1,6 +1,6 @@
-#from IE120R import IE120R
-import siliconperception ; print('siliconperception',siliconperception.__version__)
-from siliconperception.IE120R import IE120R
+from IE120R import IE120R,IE120R_HW
+#import siliconperception ; print('siliconperception',siliconperception.__version__)
+#from siliconperception.IE120R import IE120R,IE120R_HW
 import torch
 import torchinfo ; print('torchinfo',torchinfo.__version__)
 import numpy as np
@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--pretrained', help='use pretrained IE120R from HF',default=False, action='store_true')
 parser.add_argument('--eta_min', help='LR cosint schedule parameter',default=0.00001, type=float)
 parser.add_argument('--tmax', help='LR cosint schedule parameter',default=100, type=float)
-parser.add_argument('--mode', help='{finetune_resnet18,finetune_encoder,pretrain}',default='finetune_resnet18')
+parser.add_argument('--mode', help='{finetune_resnet18,finetune_encoder,fineune_hw,pretrain}',default='finetune_resnet18')
 parser.add_argument('--verbose', help='logging',default=False, action='store_true')
 parser.add_argument('--push', help='push encoder model to HF',default=False, action='store_true')
 parser.add_argument('--saveinterval', help='push to HF every saveinterval batches',default=100000, type=int)
@@ -91,7 +91,7 @@ dmean = transforms.transforms[-1].mean.numpy()
 dstd = transforms.transforms[-1].std.numpy()
 
 # --------------------------------------------------------------------------------------------------------------------------
-if args.mode=='finetune_encoder' or args.mode=='pretrain':
+if args.mode=='finetune_encoder' or args.mode=='finetune_hw' or args.mode=='pretrain':
     if args.pretrained:
         encoder = IE120R.from_pretrained('siliconperception/IE120R')
         print('image encoder loaded from HF')
@@ -100,17 +100,20 @@ if args.mode=='finetune_encoder' or args.mode=='pretrain':
         if args.encoder is not None:
             encoder.load_state_dict(torch.load('{}'.format(args.encoder)))
             print('image encoder model state_dict loaded',args.encoder)
+    if args.mode=='finetune_hw':
+        encoder = IE120R_HW(encoder)
     if args.verbose:
         s=torchinfo.summary(encoder,col_names=["input_size","output_size","num_params"],input_size=(1,3,896,896))
         print('IE120R',s)
         with open(args.log, 'a') as f:
             print('IE120',s,file=f)
-    if args.mode=='finetune_encoder':
+    if args.mode=='finetune_encoder' or args.mode=='finetune_hw':
         for param in encoder.parameters():
             param.requires_grad = False
         encoder = encoder.eval()
     encoder = encoder.to(args.device)
-    
+ 
+#exit()
 # --------------------------------------------------------------------------------------------------------------------------
 synlabel={}
 labeltext={}
@@ -187,6 +190,9 @@ if args.mode=='finetune_resnet18':
 if args.mode=='finetune_encoder':
     roi=896
     labeltype='imagenet'
+if args.mode=='finetune_hw':
+    roi=896
+    labeltype='imagenet'
 if args.mode=='pretrain':
     roi=896
     labeltype='resnet18'
@@ -203,13 +209,17 @@ for _ in range(args.workers):
 
 # --------------------------------------------------------------------------------------------------------------------------
 class Decoder(nn.Module):
-    def __init__(self, encoder):
+    def __init__(self,encoder,alt='resnet'):
         super(Decoder, self).__init__()
+        self.alt=alt
         self.encoder = encoder
         self.layerp = nn.Conv2d(512, 1000, kernel_size=7, stride=1) # linear projection from final 7x7 feature map to 1000 imagenet classes
 
     def forward(self, x):
-        fmap = self.encoder(x)[4]
+        if self.alt=='resnet':
+            fmap = self.encoder(x)[4]
+        if self.alt=='hw':
+            fmap = self.encoder(x)
         y = self.layerp(fmap)
         return y[:,:,0,0]
 
@@ -217,6 +227,8 @@ if args.mode=='finetune_resnet18':
     model = Decoder(resnet18)
 if args.mode=='finetune_encoder':
     model = Decoder(encoder)
+if args.mode=='finetune_hw':
+    model = Decoder(encoder,alt='hw')
 if args.mode=='pretrain':
     model = encoder
 if args.verbose:
@@ -257,7 +269,7 @@ while i<1+args.nbatch:
     x = x.to(device)
     model.train()
     o = model(x)
-    if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder':
+    if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder' or args.mode=='finetune_hw':
         y=torch.utils.data.default_convert(y)
         y = y.to(device)
         loss = classify(o,y)
@@ -303,7 +315,7 @@ while i<1+args.nbatch:
     gavg = np.mean(garr[-args.avg:])
     lr = optimizer.param_groups[0]['lr']
     aavg = np.mean(aarr[-args.avg:])
-    if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder':
+    if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder' or args.mode=='finetune_hw':
         s = 'BATCH {:12d} wall {} lr {:12.10f} wd {:12.10f} batch {:6d} loss {:12.6f} {:12.6f} grad {:12.6f} {:12.6f} opt {:15} accuracy {:12.6f}'.format(
             i,datetime.datetime.now(),lr,args.weight_decay,args.batch,loss.item(),lavg,total_norm,gavg,args.opt+'_'+args.loss+'_'+args.sched,aavg)
     if args.mode=='pretrain':
@@ -320,7 +332,7 @@ while i<1+args.nbatch:
             encoder.save_pretrained('ie120r_medium_{}'.format(siliconperception.__version__))
             encoder.push_to_hub("siliconperception/IE120R")
 
-if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder':
+if args.mode=='finetune_resnet18' or args.mode=='finetune_encoder' or args.mode=='finetune_hw':
     model.eval()
     for j in range(50000//args.batch):
         (x0,y0)=q1.get() # draw from q1, the validation distribution

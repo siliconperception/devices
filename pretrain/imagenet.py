@@ -1,6 +1,7 @@
 # train and test imagenet classification task using pretrained image encoder
 import siliconperception ; print('siliconperception',siliconperception.__version__)
 from siliconperception.IE120NX import IE120NX
+from siliconperception.IE120L import IE120L
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,7 +22,8 @@ from transformers import AutoModel
 import timm
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--convnext', help='use convnext reference encoder',default=False, action='store_true')
+parser.add_argument('--alt', help='encoder model alt type {convnext,ie120nx,ie120l}',default='convnext')
+#parser.add_argument('--convnext', help='use convnext reference encoder',default=False, action='store_true')
 parser.add_argument('--imagenet', help='imagenet dataset base directory',default='../')
 #parser.add_argument('--data', help='train or val',default='train')
 parser.add_argument('--device', help='pytorch execution device',default='cuda')
@@ -48,7 +50,6 @@ parser.add_argument('--ann', help='annotation json file',default='../coco/annota
 parser.add_argument('--img', help='image directory',default='../coco/train2017')
 parser.add_argument('--encoder', help='encoder model name',default=None)
 parser.add_argument('--freeze', help='freeze encoder weights',default=False, action='store_true')
-parser.add_argument('--alt', help='encoder model alt type',default='convnext')
 parser.add_argument('--roi', help='input image x/y size',default=768, type=int)
 parser.add_argument('--debug', help='verbose',default=False, action='store_true')
 parser.add_argument('--log', help='log file name',default=None)
@@ -71,7 +72,7 @@ with open(args.log, 'a') as f:
 #mamba.eval() # eval mode
 #print('mamba loaded,frozen',self.mamba.config.mean,self.mamba.config.std)
 
-if args.convnext:
+if args.alt=='convnext':
     args.roi=224
     encoder = timm.create_model( 'convnextv2_tiny.fcmae', pretrained=True, features_only=True,)
     for param in encoder.parameters():
@@ -84,83 +85,49 @@ if args.convnext:
     s=torchinfo.summary(encoder,col_names=["input_size","output_size","num_params"],input_size=(1,3,224,224))
     print(s)
     print('convnextv2 reference encoder loaded and frozen')
-else:
+if args.alt=='ie120nx':
     encoder = IE120NX.from_pretrained('siliconperception/IE120NX')
-    print('pretrained image encoder model loaded')
+    print('IE120NX pretrained image encoder model loaded')
+if args.alt=='ie120l':
+    encoder = IE120L.from_pretrained('siliconperception/IE120L')
+    print('IE120L pretrained image encoder model loaded')
     
-    #if args.encoder is not None:
-    #    encoder.load_state_dict(torch.load('{}'.format(args.encoder)))
-    #    print('image encoder model state_dict loaded')
-
-    if args.freeze:
-        for param in encoder.parameters():
-            param.requires_grad = False
-        encoder.eval() # eval mode
-        print('image encoder model frozen')
-    else:
-        encoder.train() # train mode
+if args.freeze:
+    for param in encoder.parameters():
+        param.requires_grad = False
+    encoder.eval() # eval mode
+    print('image encoder model frozen')
+else:
+    encoder.train() # train mode
 
 class Decoder(nn.Module):
-    def __init__(self, encoder, alt=None,convnext=False):
+    def __init__(self, encoder, alt=None):
         super(Decoder, self).__init__()
-        self.convnext = convnext
         self.encoder = encoder
         self.alt = alt
-        if self.alt=='alt1':
-            c0=1000
-            self.layer0c1  = nn.Sequential(nn.Conv2d(512, c0, kernel_size=3, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c2  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c3  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c4  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c5  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c6  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            self.layer0c7  = nn.Sequential(nn.Conv2d(c0, c0, kernel_size=1, stride=1), nn.BatchNorm2d(c0), nn.ReLU())
-            #c1=1000
-            #self.layer1c1  = nn.Sequential(nn.Conv2d(c0, c1, kernel_size=3, stride=1), nn.BatchNorm2d(c1), nn.ReLU())
-            #self.layer1c2  = nn.Sequential(nn.Conv2d(c1, c1, kernel_size=1, stride=1), nn.BatchNorm2d(c1), nn.ReLU())
-            #self.layer1c3  = nn.Sequential(nn.Conv2d(c1, c1, kernel_size=1, stride=1), nn.BatchNorm2d(c1), nn.ReLU())
-            #self.layer1c4  = nn.Sequential(nn.Conv2d(c1, c1, kernel_size=1, stride=1), nn.BatchNorm2d(c1), nn.ReLU())
-            #self.layer1c5  = nn.Sequential(nn.Conv2d(c1, c1, kernel_size=1, stride=1), nn.BatchNorm2d(c1), nn.ReLU())
-            self.layerl = nn.Conv2d(c0, 1000, kernel_size=1, stride=1) # linear projection to 1000 imagenet classes
-        if self.alt=='convnext':
+        if self.alt=='convnext' or self.alt=='ie120nx':
             self.layer1  = nn.Conv2d(768, 100, kernel_size=1, stride=1) # linearly project each feature
-            #self.layer1  = nn.Sequential(nn.Conv2d(768, 100, kernel_size=1, stride=1), nn.BatchNorm2d(100), nn.ReLU())
-            #self.layer2  = nn.Sequential(nn.Conv2d(100, 100, kernel_size=10, stride=5), nn.BatchNorm2d(100), nn.ReLU())
-            #self.layer3  = nn.Sequential(nn.Conv2d(100, 100, kernel_size=3, stride=5), nn.BatchNorm2d(100), nn.ReLU())
             self.layerp = nn.Conv2d(100, 1000, kernel_size=7, stride=1) # linear projection to 1000 imagenet classes
+        if self.alt=='ie120l':
+            self.layerp = nn.Conv2d(512, 1000, kernel_size=3, stride=1) # linear projection to 1000 imagenet classes
 
     def forward(self, x):
-        if self.alt=='alt1':
-            fmap = self.encoder(x)
-            y = self.layer0c1(fmap)
-            y = self.layer0c2(y)
-            y = self.layer0c3(y)
-            y = self.layer0c4(y)
-            y = self.layer0c5(y)
-            y = self.layer0c6(y)
-            y = self.layer0c7(y)
-            #y = self.layer1c1(y)
-            #y = self.layer1c2(y)
-            #y = self.layer1c3(y)
-            #y = self.layer1c4(y)
-            #y = self.layer1c5(y)
-            y = self.layerl(y)
-            return y[:,:,0,0]
         if self.alt=='convnext':
-            if self.convnext:
-                fmap = self.encoder(x)[3]
-            else:
-                fmap = self.encoder(x)
+            fmap = self.encoder(x)[3]
             y = self.layer1(fmap)
-            #y = self.layer2(y)
-            #y = self.layer3(y)
             y = self.layerp(y)
             return y[:,:,0,0]
+        if self.alt=='ie120nx':
+            fmap = self.encoder(x)
+            y = self.layer1(fmap)
+            y = self.layerp(y)
+            return y[:,:,0,0]
+        if self.alt=='ie120l':
+            fmap = self.encoder(x)
+            y = self.layerp(fmap)
+            return y[:,:,0,0]
 
-if args.decoder is None:
-    model = Decoder(encoder,alt='convnext',convnext=args.convnext)
-else:
-    model = torch.load('{}'.format(args.decoder))
+model = Decoder(encoder,alt=args.alt)
 torchinfo.summary(model, input_size=(1, 3, args.roi, args.roi))
 device = torch.device(args.device)
 model = model.to(device)
@@ -211,7 +178,7 @@ class Batch:
                 l[i] = self.val_label[int(fn[15:15+8])-1]-1
 
         d = d/255.
-        if args.convnext:
+        if args.alt=='convnext':
             d = np.subtract(d,args.dmean)
             d = np.divide(d,args.dstd)
 
@@ -311,8 +278,8 @@ if args.train:
         with open(args.log, 'a') as f:
             print(s,file=f)
         
-        if args.save is not None and (i%1000)==0:
-            torch.save(model, '{}'.format(args.save))
+        #if args.save is not None and (i%1000)==0:
+        #    torch.save(model, '{}'.format(args.save))
     
         if args.test and (i%1000)==0:
             model.eval()

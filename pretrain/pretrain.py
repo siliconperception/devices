@@ -17,6 +17,8 @@ import scipy
 import cv2
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--patience', help='LR param',default=10, type=int)
+parser.add_argument('--min_lr', help='minimum learning rate',default=0.00001, type=float)
 parser.add_argument('--show', help='in batches',default=None, type=int)
 parser.add_argument('--saveinterval', help='in batches',default=None, type=int)
 parser.add_argument('--train', help='pretrain image encoder model',default=False, action='store_true')
@@ -253,7 +255,7 @@ if args.train:
     if args.sched=='multi':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.steps, gamma=args.gamma)
     if args.sched=='plat':
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min',factor=args.factor,min_lr=0.0001)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min',factor=args.factor,min_lr=args.min_lr,patience=args.patience)
     
     def worker(stop, q, args, dataset):
         while not stop.is_set():
@@ -287,8 +289,11 @@ if args.train:
         optimizer.step()
         larr.append(loss.item())
         lavg = np.mean(larr[-args.avg:])
-        if ((i%args.step)==0) or args.sched=='multi':
-            scheduler.step(lavg)
+        if (i%args.step)==0:
+            if args.sched=='plat':
+                scheduler.step(lavg)
+            else:
+                scheduler.step()
     
         # compute gradient
         total_norm = 0
