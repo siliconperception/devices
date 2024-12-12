@@ -1,6 +1,5 @@
-from IE120R import IE120R,IE120R_HW
-#import siliconperception ; print('siliconperception',siliconperception.__version__)
-#from siliconperception.IE120R import IE120R,IE120R_HW
+import siliconperception ; print('siliconperception',siliconperception.__version__)
+from siliconperception.IE120R import IE120R,IE120R_HW
 import torch
 import torchinfo ; print('torchinfo',torchinfo.__version__)
 import numpy as np
@@ -35,7 +34,7 @@ parser.add_argument('--nbatch', help='total training batches',default=1000000000
 parser.add_argument('--lr', help='initial learning rate',default=0.001, type=float)
 parser.add_argument('--device', help='pytorch execution device',default='cuda')
 parser.add_argument('--encoder', help='input encoder model name',default=None)
-parser.add_argument('--alt', help='encoder model alt type',default='medium')
+#parser.add_argument('--alt', help='encoder model alt type',default='medium')
 parser.add_argument('--imagenet', help='imagenet dataset base directory',default='../')
 parser.add_argument('--batch', help='batch size',default=20, type=int)
 parser.add_argument('--workers', help='number of threads for batch generation',default=12, type=int)
@@ -89,6 +88,7 @@ data_config = timm.data.resolve_model_data_config(resnet18)
 transforms = timm.data.create_transform(**data_config, is_training=False)
 dmean = transforms.transforms[-1].mean.numpy()
 dstd = transforms.transforms[-1].std.numpy()
+print('dmean',dmean,'dstd',dstd)
 
 # --------------------------------------------------------------------------------------------------------------------------
 if args.mode=='finetune_encoder' or args.mode=='finetune_hw' or args.mode=='pretrain':
@@ -96,7 +96,7 @@ if args.mode=='finetune_encoder' or args.mode=='finetune_hw' or args.mode=='pret
         encoder = IE120R.from_pretrained('siliconperception/IE120R')
         print('image encoder loaded from HF')
     else:
-        encoder = IE120R(alt=args.alt)
+        encoder = IE120R()
         if args.encoder is not None:
             encoder.load_state_dict(torch.load('{}'.format(args.encoder)))
             print('image encoder model state_dict loaded',args.encoder)
