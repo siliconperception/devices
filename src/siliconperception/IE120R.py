@@ -31,14 +31,14 @@ class IE120R(
         self.layer14 = nn.Sequential(nn.Conv2d(192, 192, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(192), nn.ReLU())
         self.layer15 = nn.Sequential(nn.Conv2d(192, 192, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(192), nn.ReLU())
         self.layerf2  = nn.Conv2d(192, 128, kernel_size=1, stride=1, padding=0)
-        self.layer16 = nn.Sequential(nn.Conv2d(192, 384, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(384), nn.ReLU())
-        self.layer17 = nn.Sequential(nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(384), nn.ReLU())
-        self.layer18 = nn.Sequential(nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(384), nn.ReLU())
-        self.layerf3  = nn.Conv2d(384, 256, kernel_size=1, stride=1, padding=0)
-        self.layer19 = nn.Sequential(nn.Conv2d(384, 640, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(640), nn.ReLU())
-        self.layer20 = nn.Sequential(nn.Conv2d(640, 640, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(640), nn.ReLU())
-        self.layer21 = nn.Sequential(nn.Conv2d(640, 640, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(640), nn.ReLU())
-        self.layerf4  = nn.Conv2d(640, 512, kernel_size=1, stride=1, padding=0)
+        self.layer16 = nn.Sequential(nn.Conv2d(192, 320, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(320), nn.ReLU())
+        self.layer17 = nn.Sequential(nn.Conv2d(320, 320, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(320), nn.ReLU())
+        self.layer18 = nn.Sequential(nn.Conv2d(320, 320, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(320), nn.ReLU())
+        self.layerf3  = nn.Conv2d(320, 256, kernel_size=1, stride=1, padding=0)
+        self.layer19 = nn.Sequential(nn.Conv2d(320, 512, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(512), nn.ReLU())
+        self.layer20 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(512), nn.ReLU())
+        self.layer21 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(512), nn.ReLU())
+        self.layerf4  = nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         out = self.layer1(x)
@@ -72,12 +72,15 @@ class IE120R(
 # create a new PT model 1) 7x7 output only 2) merge batchnorm 3) quantize weights to FP18
 # save the new PT model and write .memh files for the weights and bias
 class IE120R_HW(nn.Module):
-    def __init__(self,model):
+    # M=3,E=4,center=-2
+    # M=7,E=8,center=1
+    # M=23,E=8,center=1
+    def __init__(self,model,M=9,E=8,center=1):
         # merge BN with previous Conv2D, quantize weights to FP18, replace FP32 weights with quantized version
         super().__init__()
         self.merge_batchnorm(model.eval().to('cpu'))
-        self.quantize()
-        self.dequantize()
+        self.quantize(M,E,center)
+        self.dequantize(M,E,center)
 
     def fuse_conv_and_bn(self,conv,bn):
         fusedconv = torch.nn.Conv2d(conv.in_channels, conv.out_channels, kernel_size=conv.kernel_size, stride=conv.stride, padding=conv.padding, bias=True)
@@ -90,41 +93,6 @@ class IE120R_HW(nn.Module):
         fusedconv.weight.data = w_eff.data
         fusedconv.bias.data = b_eff.data
         return fusedconv
-
-    #def fp_quantize(self,x,M=3,E=4,center=-2): # float32 -> uint32
-    #def fp_quantize(self,x,M=7,E=8,center=1): # float32 -> uint32
-    #def fp_quantize(self,x,M=23,E=8,center=1): # float32 -> uint32
-    def fp_quantize(self,x,M=9,E=8,center=1): # float32 -> uint32
-        bias = (2**(E-1))-center
-        xmin = (1)*2**(1-bias)
-        xmax = (1+(1-2**(-M)))*2**(((2**E)-2)-bias)
-        if (1+E+M)<32:
-            x = x+0.5*xmin*np.sign(x) # round to +-inf
-        x = np.maximum(np.abs(x),xmin)*np.sign(x) # clip
-        x = np.minimum(np.abs(x),xmax)*np.sign(x) # clip
-        x = x.astype(np.float32)
-        w = np.frombuffer(x.tobytes(), dtype=np.uint32) # flatten
-        s = (w&0x80000000)>>31
-        e = (w&0x7f800000)>>23
-        e = np.where(e==0,np.zeros(e.shape,dtype=np.uint32),e-127+bias) # handle subnormal zero
-        m = (w&0x007fffff)>>(23-M)
-        q = (s<<(E+M))|(e<<M)|m
-        q = q.reshape(x.shape) # unflatten
-        return q
-
-    #def fp_dequantize(self,x,M=3,E=4,center=-2): # uint32 -> float32
-    #def fp_dequantize(self,x,M=7,E=8,center=1): # uint32 -> float32
-    #def fp_dequantize(self,x,M=23,E=8,center=1): # uint32 -> float32
-    def fp_dequantize(self,x,M=9,E=8,center=1): # uint32 -> float32
-        bias = (2**(E-1))-center
-        s = (x&(((2**1)-1)<<(M+E)))>>(M+E)
-        e = (x&(((2**E)-1)<<(M)))>>(M)
-        m = (x&(((2**M)-1)<<(0)))>>(0)
-        e = np.where(e==0,np.zeros(e.shape,dtype=np.uint32),e-bias+127)
-        w = (s<<31)|(e<<23)|(m<<(23-M))
-        dq = np.frombuffer(w.tobytes(), dtype=np.float32)
-        dq = np.copy(dq.reshape(x.shape))
-        return dq
 
     def merge_batchnorm(self,model):
         self.layer1 = nn.Sequential(self.fuse_conv_and_bn(model.layer1[0],model.layer1[1]), nn.ReLU())
@@ -150,53 +118,82 @@ class IE120R_HW(nn.Module):
         self.layer21 = nn.Sequential(self.fuse_conv_and_bn(model.layer21[0],model.layer21[1]), nn.ReLU())
         self.layerf4 = model.layerf4
 
-    def quantize(self):
-        self.weight1 = self.fp_quantize(self.layer1[0].weight.detach().numpy())
-        self.weight2 = self.fp_quantize(self.layer2[0].weight.detach().numpy())
-        self.weight3 = self.fp_quantize(self.layer3[0].weight.detach().numpy())
-        self.weight4 = self.fp_quantize(self.layer4[0].weight.detach().numpy())
-        self.weight5 = self.fp_quantize(self.layer5[0].weight.detach().numpy())
-        self.weight6 = self.fp_quantize(self.layer6[0].weight.detach().numpy())
-        self.weight7 = self.fp_quantize(self.layer7[0].weight.detach().numpy())
-        self.weight8 = self.fp_quantize(self.layer8[0].weight.detach().numpy())
-        self.weight9 = self.fp_quantize(self.layer9[0].weight.detach().numpy())
-        self.weight10 = self.fp_quantize(self.layer10[0].weight.detach().numpy())
-        self.weight11 = self.fp_quantize(self.layer11[0].weight.detach().numpy())
-        self.weight12 = self.fp_quantize(self.layer12[0].weight.detach().numpy())
-        self.weight13 = self.fp_quantize(self.layer13[0].weight.detach().numpy())
-        self.weight14 = self.fp_quantize(self.layer14[0].weight.detach().numpy())
-        self.weight15 = self.fp_quantize(self.layer15[0].weight.detach().numpy())
-        self.weight16 = self.fp_quantize(self.layer16[0].weight.detach().numpy())
-        self.weight17 = self.fp_quantize(self.layer17[0].weight.detach().numpy())
-        self.weight18 = self.fp_quantize(self.layer18[0].weight.detach().numpy())
-        self.weight19 = self.fp_quantize(self.layer19[0].weight.detach().numpy())
-        self.weight20 = self.fp_quantize(self.layer20[0].weight.detach().numpy())
-        self.weight21 = self.fp_quantize(self.layer21[0].weight.detach().numpy())
-        self.weightf4 = self.fp_quantize(self.layerf4.weight.detach().numpy())
+    def fp_quantize(self,x,M,E,center): # float32 -> uint32
+        bias = (2**(E-1))-center
+        xmin = (1)*2**(1-bias)
+        xmax = (1+(1-2**(-M)))*2**(((2**E)-2)-bias)
+        if (1+E+M)<32:
+            x = x+0.5*xmin*np.sign(x) # round to +-inf
+        x = np.maximum(np.abs(x),xmin)*np.sign(x) # clip
+        x = np.minimum(np.abs(x),xmax)*np.sign(x) # clip
+        x = x.astype(np.float32)
+        w = np.frombuffer(x.tobytes(), dtype=np.uint32) # flatten
+        s = (w&0x80000000)>>31
+        e = (w&0x7f800000)>>23
+        e = np.where(e==0,np.zeros(e.shape,dtype=np.uint32),e-127+bias) # handle subnormal zero
+        m = (w&0x007fffff)>>(23-M)
+        q = (s<<(E+M))|(e<<M)|m
+        q = q.reshape(x.shape) # unflatten
+        return q
 
-    def dequantize(self):
-        self.layer1[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight1))
-        self.layer2[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight2))
-        self.layer3[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight3))
-        self.layer4[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight4))
-        self.layer5[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight5))
-        self.layer6[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight6))
-        self.layer7[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight7))
-        self.layer8[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight8))
-        self.layer9[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight9))
-        self.layer10[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight10))
-        self.layer11[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight11))
-        self.layer12[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight12))
-        self.layer13[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight13))
-        self.layer14[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight14))
-        self.layer15[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight15))
-        self.layer16[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight16))
-        self.layer17[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight17))
-        self.layer18[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight18))
-        self.layer19[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight19))
-        self.layer20[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight20))
-        self.layer21[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight21))
-        self.layerf4.weight.data = torch.from_numpy(self.fp_dequantize(self.weightf4))
+    def fp_dequantize(self,x,M,E,center): # uint32 -> float32
+        bias = (2**(E-1))-center
+        s = (x&(((2**1)-1)<<(M+E)))>>(M+E)
+        e = (x&(((2**E)-1)<<(M)))>>(M)
+        m = (x&(((2**M)-1)<<(0)))>>(0)
+        e = np.where(e==0,np.zeros(e.shape,dtype=np.uint32),e-bias+127)
+        w = (s<<31)|(e<<23)|(m<<(23-M))
+        dq = np.frombuffer(w.tobytes(), dtype=np.float32)
+        dq = np.copy(dq.reshape(x.shape))
+        return dq
+
+    def quantize(self,M,E,center):
+        self.weight1 = self.fp_quantize(self.layer1[0].weight.detach().numpy(),M,E,center)
+        self.weight2 = self.fp_quantize(self.layer2[0].weight.detach().numpy(),M,E,center)
+        self.weight3 = self.fp_quantize(self.layer3[0].weight.detach().numpy(),M,E,center)
+        self.weight4 = self.fp_quantize(self.layer4[0].weight.detach().numpy(),M,E,center)
+        self.weight5 = self.fp_quantize(self.layer5[0].weight.detach().numpy(),M,E,center)
+        self.weight6 = self.fp_quantize(self.layer6[0].weight.detach().numpy(),M,E,center)
+        self.weight7 = self.fp_quantize(self.layer7[0].weight.detach().numpy(),M,E,center)
+        self.weight8 = self.fp_quantize(self.layer8[0].weight.detach().numpy(),M,E,center)
+        self.weight9 = self.fp_quantize(self.layer9[0].weight.detach().numpy(),M,E,center)
+        self.weight10 = self.fp_quantize(self.layer10[0].weight.detach().numpy(),M,E,center)
+        self.weight11 = self.fp_quantize(self.layer11[0].weight.detach().numpy(),M,E,center)
+        self.weight12 = self.fp_quantize(self.layer12[0].weight.detach().numpy(),M,E,center)
+        self.weight13 = self.fp_quantize(self.layer13[0].weight.detach().numpy(),M,E,center)
+        self.weight14 = self.fp_quantize(self.layer14[0].weight.detach().numpy(),M,E,center)
+        self.weight15 = self.fp_quantize(self.layer15[0].weight.detach().numpy(),M,E,center)
+        self.weight16 = self.fp_quantize(self.layer16[0].weight.detach().numpy(),M,E,center)
+        self.weight17 = self.fp_quantize(self.layer17[0].weight.detach().numpy(),M,E,center)
+        self.weight18 = self.fp_quantize(self.layer18[0].weight.detach().numpy(),M,E,center)
+        self.weight19 = self.fp_quantize(self.layer19[0].weight.detach().numpy(),M,E,center)
+        self.weight20 = self.fp_quantize(self.layer20[0].weight.detach().numpy(),M,E,center)
+        self.weight21 = self.fp_quantize(self.layer21[0].weight.detach().numpy(),M,E,center)
+        self.weightf4 = self.fp_quantize(self.layerf4.weight.detach().numpy(),M,E,center)
+
+    def dequantize(self,M,E,center):
+        self.layer1[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight1,M,E,center))
+        self.layer2[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight2,M,E,center))
+        self.layer3[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight3,M,E,center))
+        self.layer4[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight4,M,E,center))
+        self.layer5[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight5,M,E,center))
+        self.layer6[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight6,M,E,center))
+        self.layer7[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight7,M,E,center))
+        self.layer8[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight8,M,E,center))
+        self.layer9[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight9,M,E,center))
+        self.layer10[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight10,M,E,center))
+        self.layer11[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight11,M,E,center))
+        self.layer12[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight12,M,E,center))
+        self.layer13[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight13,M,E,center))
+        self.layer14[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight14,M,E,center))
+        self.layer15[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight15,M,E,center))
+        self.layer16[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight16,M,E,center))
+        self.layer17[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight17,M,E,center))
+        self.layer18[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight18,M,E,center))
+        self.layer19[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight19,M,E,center))
+        self.layer20[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight20,M,E,center))
+        self.layer21[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight21,M,E,center))
+        self.layerf4.weight.data = torch.from_numpy(self.fp_dequantize(self.weightf4,M,E,center))
 
     def write_weight(self,w,fn):
         w = np.moveaxis(w,1,-1) # move ichan to end
