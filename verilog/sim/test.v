@@ -25,26 +25,9 @@ wire [$clog2(7):0] m_col;
 wire [$clog2(7):0] m_row;
 wire [8*DTYPE-1:0] m_data;
 
-//debug
-initial #0 $dumpvars(2, tb);
-//initial #1300000 $dumpvars(0, tb);
-//initial #1500000 $finish();
-//initial #8920000 $dumpvars(0, tb);
-//initial #9000000 $finish();
-
 integer i;
-//wire dbg_regz = tb.u0.u7.u0.reg_z[0][0];
-/*
-initial begin
-	#1300000 $dumpvars(0, tb);
-	for (i=0; i<1; i=i+1) begin
-		$dumpvars(0, tb.u0.layer13.patch[i]);
-		$dumpvars(0, tb.u0.layer13.strip_wen[i]);
-		$dumpvars(0, tb.u0.layer13.strip_wa[i]);
-		$dumpvars(0, tb.u0.layer13.strip_ra[i]);
-	end
-end
-*/
+//debug
+//initial #0 $dumpvars(2, tb);
 
 // init
 initial begin
@@ -81,23 +64,6 @@ reg [512*DTYPE-1:0] activation19 [0:49-1];
 reg [512*DTYPE-1:0] activation20 [0:49-1];
 reg [512*DTYPE-1:0] activation21 [0:49-1];
 reg [512*DTYPE-1:0] activation22 [0:49-1];
-
-/*
-// SMALL VERSION
-reg [96*DTYPE-1:0] activation1 [0:3136-1];
-reg [96*DTYPE-1:0] activation2 [0:3136-1];
-reg [96*DTYPE-1:0] activation3 [0:3136-1];
-reg [192*DTYPE-1:0] activation4 [0:784-1];
-reg [192*DTYPE-1:0] activation5 [0:784-1];
-reg [192*DTYPE-1:0] activation6 [0:784-1];
-reg [320*DTYPE-1:0] activation7 [0:196-1];
-reg [320*DTYPE-1:0] activation8 [0:196-1];
-reg [320*DTYPE-1:0] activation9 [0:196-1];
-reg [512*DTYPE-1:0] activation10 [0:49-1];
-reg [512*DTYPE-1:0] activation11 [0:49-1];
-reg [512*DTYPE-1:0] activation12 [0:49-1];
-reg [512*DTYPE-1:0] activation13 [0:49-1];
-*/
 
 initial begin
     $readmemh("./memh/weight1.memh", tb.u0.layer1.weight.spram);
