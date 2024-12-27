@@ -1,0 +1,18 @@
+Flow Status	Successful - Thu Dec 26 12:55:07 2024
+Quartus Prime Version	23.4.0 Build 79 11/22/2023 SC Pro Edition
+Revision Name	top
+Top-level Entity Name	top
+Family	Agilex 7
+Device	AGIB027R29A1E1VB
+Timing Models	Preliminary
+Power Models	Preliminary
+Device Status	Preliminary
+Logic utilization (in ALMs)	266,302 / 912,800 ( 29 % )
+Total dedicated logic registers	435942
+Total pins	394 / 1,040 ( 38 % )
+Total block memory bits	216,203,136 / 271,810,560 ( 80 % )
+Total RAM Blocks	12,978 / 13,272 ( 98 % )
+Total DSP Blocks	3,960 / 8,528 ( 46 % )
+Total HSSI HPS	0 / 1 ( 0 % )
+Total HSSI R-Tiles	0 / 3 ( 0 % )
+Total PLLs	0 / 36 ( 0 % )

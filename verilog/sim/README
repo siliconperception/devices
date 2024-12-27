@@ -1,0 +1,6 @@
+pip install numpy torch torchinfo cv2
+pip install --upgrade siliconperception
+python3 test.py
+rm -f sim.vvp
+iverilog -v -g2012 -o sim.vvp ie120r_func.v test.v -s tb
+vvp sim.vvp -lxt2
