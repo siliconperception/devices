@@ -1,1 +1,0 @@
-python pretrain.py --opt adamw --weight_decay 0.0 --workers 12 --batch 20 --save ie120r.pt --show --verbose --loss pdist --sched cos --lr 0.001 --step 100 --eta_min 0.00001 --tmax 100 --device cpu

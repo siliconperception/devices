@@ -1,3 +1,0 @@
-./dataset.bash
-python classify.py --backbone resnet18
-python classify.py --backbone ie120r
