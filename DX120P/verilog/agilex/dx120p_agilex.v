@@ -19,8 +19,8 @@
 // SOFTWARE.
 
 
-// layer    1 nstrip   14 ocmux    2 m_clk  250000000 req    37056 avail    41667 util   0.8893 nalu   3584 wmem  42467328 smem  14450688 oshape [56, 56, 512]
-// layer    2 nstrip    7 ocmux    1 m_clk  250000000 req    37000 avail    41667 util   0.8880 nalu   1792 wmem  21233664 smem   8028160 oshape [56, 56, 256]
+// layer    1 nstrip   14 ocmux    2 m_clk  250000000 req    37056 avail    41667 util   0.8893 nalu   1792 wmem  21233664 smem  14450688 oshape [56, 56, 256]
+// layer    2 nstrip    7 ocmux    2 m_clk  250000000 req    37136 avail    41667 util   0.8913 nalu    896 wmem  10616832 smem   4014080 oshape [56, 56, 256]
 // layer    3 nstrip    7 ocmux    2 m_clk  250000000 req    37136 avail    41667 util   0.8913 nalu    896 wmem  10616832 smem   4014080 oshape [56, 56, 256]
 // layer    4 nstrip    7 ocmux    8 m_clk  250000000 req    74272 avail    83333 util   0.8913 nalu    224 wmem  10616832 smem   3612672 oshape [28, 28, 256]
 // layer    5 nstrip    2 ocmux    2 m_clk  250000000 req    64848 avail    83333 util   0.7782 nalu    256 wmem  10616832 smem   1835008 oshape [28, 28, 256]
@@ -32,14 +32,15 @@
 // layer   11 nstrip    1 ocmux   16 m_clk  250000000 req   185200 avail   333333 util   0.5556 nalu     16 wmem  10616832 smem    401408 oshape [5, 5, 256]
 // layer   12 nstrip    1 ocmux   32 m_clk  250000000 req   222240 avail   333333 util   0.6667 nalu      8 wmem  10616832 smem    286720 oshape [3, 3, 256]
 // layer   13 nstrip    1 ocmux   64 m_clk  250000000 req   148160 avail   333333 util   0.4445 nalu      4 wmem  10616832 smem    172032 oshape [1, 1, 256]
+// layer   14 nstrip    1 ocmux   64 m_clk  250000000 req    17088 avail   333333 util   0.0513 nalu      8 wmem   2359296 smem    122880 oshape [1, 1, 512]
 
-// nalu   7244
-// wmem 180486144
-// smem 39051264
+// nalu   4564
+// wmem 150994944
+// smem 35160064
 
-// op    0 nstrip   14 sdepth   2016 swidth    512 wdepth   4608 wwidth   9216 bwidth  16384
-// op    1 nstrip    7 sdepth    140 swidth   8192 wdepth   4608 wwidth   4608 bwidth   8192
-// op    2 nstrip    7 sdepth     70 swidth   8192 wdepth   2304 wwidth   4608 bwidth   8192
+// op    0 nstrip   14 sdepth   2016 swidth    512 wdepth   4608 wwidth   4608 bwidth   8192
+// op    1 nstrip    7 sdepth    140 swidth   4096 wdepth   2304 wwidth   4608 bwidth   8192
+// op    2 nstrip    7 sdepth    140 swidth   4096 wdepth   2304 wwidth   4608 bwidth   8192
 // op    3 nstrip    7 sdepth    126 swidth   4096 wdepth   2304 wwidth   4608 bwidth   8192
 // op    4 nstrip    2 sdepth    896 swidth   1024 wdepth   2304 wwidth   4608 bwidth   8192
 // op    5 nstrip    2 sdepth    224 swidth   4096 wdepth   2304 wwidth   4608 bwidth   8192
@@ -50,23 +51,24 @@
 // op   10 nstrip    1 sdepth    784 swidth    512 wdepth   2304 wwidth   4608 bwidth   8192
 // op   11 nstrip    1 sdepth    560 swidth    512 wdepth   2304 wwidth   4608 bwidth   8192
 // op   12 nstrip    1 sdepth    672 swidth    256 wdepth   2304 wwidth   4608 bwidth   8192
+// op   13 nstrip    1 sdepth    960 swidth    128 wdepth    256 wwidth   9216 bwidth  16384
 
+// ninst      1 sdepth    960 swidth    128
 // ninst      1 sdepth    672 swidth    256
 // ninst      1 sdepth    560 swidth    512
 // ninst      1 sdepth    784 swidth    512
 // ninst      7 sdepth    126 swidth   4096
-// ninst      7 sdepth     70 swidth   8192
+// ninst     14 sdepth    140 swidth   4096
 // ninst      2 sdepth    210 swidth   4096
 // ninst      1 sdepth    420 swidth   2048
 // ninst      3 sdepth    896 swidth   1024
 // ninst      2 sdepth    224 swidth   4096
 // ninst      1 sdepth    448 swidth   2048
 // ninst     14 sdepth   2016 swidth    512
-// ninst      7 sdepth    140 swidth   8192
 
-// ninst     11 wdepth   2304 wwidth   4608
+// ninst      1 wdepth    256 wwidth   9216
+// ninst     12 wdepth   2304 wwidth   4608
 // ninst      1 wdepth   4608 wwidth   4608
-// ninst      1 wdepth   4608 wwidth   9216
 
 module dx120p (
     input wire clk,
@@ -82,7 +84,7 @@ module dx120p (
     output wire m_last,
     output wire [$clog2(1):0] m_col,
     output wire [$clog2(1):0] m_row,
-    output wire [4*32-1:0] m_data
+    output wire [8*32-1:0] m_data
 );
 
 
@@ -92,7 +94,7 @@ wire [$clog2(2):0] op0_chan;
 wire op0_last;
 wire [$clog2(56):0] op0_col;
 wire [$clog2(56):0] op0_row;
-wire [256*32-1:0] op0_data;
+wire [128*32-1:0] op0_data;
 LAYER1 layer1 (
 .reset(reset),
 .s_clk(clk),
@@ -112,11 +114,11 @@ LAYER1 layer1 (
 );
 
 wire op1_valid;
-wire [$clog2(1):0] op1_chan;
+wire [$clog2(2):0] op1_chan;
 wire op1_last;
 wire [$clog2(56):0] op1_col;
 wire [$clog2(56):0] op1_row;
-wire [256*32-1:0] op1_data;
+wire [128*32-1:0] op1_data;
 LAYER2 layer2 (
 .reset(reset),
 .s_clk(clk),
@@ -399,12 +401,36 @@ LAYER13 layer13 (
 .m_data(op12_data)
 );
 
-assign m_valid=op12_valid;
-assign m_chan=op12_chan;
-assign m_last=op12_last;
-assign m_col=op12_col;
-assign m_row=op12_row;
-assign m_data=op12_data;
+wire op13_valid;
+wire [$clog2(64):0] op13_chan;
+wire op13_last;
+wire [$clog2(1):0] op13_col;
+wire [$clog2(1):0] op13_row;
+wire [8*32-1:0] op13_data;
+LAYER14 layer14 (
+.reset(reset),
+.s_clk(clk),
+.s_valid(op12_valid),
+.s_chan(op12_chan),
+.s_last(op12_last),
+.s_col(op12_col),
+.s_row(op12_row),
+.s_data(op12_data),
+.m_clk(clk),
+.m_valid(op13_valid),
+.m_chan(op13_chan),
+.m_last(op13_last),
+.m_col(op13_col),
+.m_row(op13_row),
+.m_data(op13_data)
+);
+
+assign m_valid=op13_valid;
+assign m_chan=op13_chan;
+assign m_last=op13_last;
+assign m_col=op13_col;
+assign m_row=op13_row;
+assign m_data=op13_data;
 
 endmodule
 
@@ -423,10 +449,10 @@ module LAYER1 (
     output reg m_last,
     output reg [$clog2(56):0] m_col,
     output reg [$clog2(56):0] m_row,
-    output reg [256*32-1:0] m_data
+    output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=512,OWIDTH=56;
+parameter OCMUX=2,OCHAN=256,OWIDTH=56;
 
 reg [$clog2(2016):0] strip_wa [14-1:0];
 reg strip_wen [14-1:0];
@@ -500,16 +526,16 @@ STRIP #(2016,512) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i]
 end
 endgenerate
 
-wire [18*512-1:0] weight_rd;
-wire [32*512-1:0] bias_rd;
+wire [18*256-1:0] weight_rd;
+wire [32*256-1:0] bias_rd;
 
 WEIGHT1 weight (.clk(m_clk),.ra(weight_ra[$clog2(4608):0]),.rd(weight_rd));
 BIAS1 bias (.clk(m_clk),.rd(bias_rd));
 
-reg [18-1:0] weight_mux [256-1:0];
-reg [32-1:0] bias_mux [256-1:0];
+reg [18-1:0] weight_mux [128-1:0];
+reg [32-1:0] bias_mux [128-1:0];
 generate
-for (i=0; i<256; i=i+1) begin : WEIGHT_MUX
+for (i=0; i<128; i=i+1) begin : WEIGHT_MUX
     always @(posedge m_clk) begin
         weight_mux[i] <= weight_rd[(i*2+ochan_sel)*18 +:18];
         bias_mux[i] <= bias_rd[(i*2+ochan_sel)*32 +:32];
@@ -517,10 +543,10 @@ for (i=0; i<256; i=i+1) begin : WEIGHT_MUX
 end
 endgenerate
 
-wire [256*32-1:0] feat [14-1:0];
+wire [128*32-1:0] feat [14-1:0];
 generate
 for (i=0; i<14; i=i+1) begin : ALU_NS
-    for (j=0; j<256; j=j+1) begin : ALU_OC
+    for (j=0; j<128; j=j+1) begin : ALU_OC
         ALU alu (
         .clk(m_clk),
         .reset(reset),
@@ -799,7 +825,7 @@ endmodule
 
 module BIAS1 (
     input wire clk,
-    output wire [512*32-1:0] rd
+    output wire [256*32-1:0] rd
 );
 bias_L01 u0 (
     .q(rd),
@@ -811,7 +837,7 @@ endmodule
 module WEIGHT1 (
     input wire clk,
     input wire [$clog2(4608):0] ra,
-    output wire [512*18-1:0] rd
+    output wire [256*18-1:0] rd
 );
 weight_L01O00 u0 (
     .q(rd[0*18*2 +:18*2]),
@@ -1453,646 +1479,6 @@ weight_L01O127 u127 (
     .address(ra),
     .clock(clk)
 );
-weight_L01O128 u128 (
-    .q(rd[128*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O129 u129 (
-    .q(rd[129*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O130 u130 (
-    .q(rd[130*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O131 u131 (
-    .q(rd[131*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O132 u132 (
-    .q(rd[132*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O133 u133 (
-    .q(rd[133*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O134 u134 (
-    .q(rd[134*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O135 u135 (
-    .q(rd[135*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O136 u136 (
-    .q(rd[136*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O137 u137 (
-    .q(rd[137*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O138 u138 (
-    .q(rd[138*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O139 u139 (
-    .q(rd[139*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O140 u140 (
-    .q(rd[140*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O141 u141 (
-    .q(rd[141*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O142 u142 (
-    .q(rd[142*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O143 u143 (
-    .q(rd[143*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O144 u144 (
-    .q(rd[144*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O145 u145 (
-    .q(rd[145*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O146 u146 (
-    .q(rd[146*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O147 u147 (
-    .q(rd[147*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O148 u148 (
-    .q(rd[148*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O149 u149 (
-    .q(rd[149*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O150 u150 (
-    .q(rd[150*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O151 u151 (
-    .q(rd[151*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O152 u152 (
-    .q(rd[152*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O153 u153 (
-    .q(rd[153*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O154 u154 (
-    .q(rd[154*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O155 u155 (
-    .q(rd[155*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O156 u156 (
-    .q(rd[156*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O157 u157 (
-    .q(rd[157*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O158 u158 (
-    .q(rd[158*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O159 u159 (
-    .q(rd[159*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O160 u160 (
-    .q(rd[160*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O161 u161 (
-    .q(rd[161*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O162 u162 (
-    .q(rd[162*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O163 u163 (
-    .q(rd[163*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O164 u164 (
-    .q(rd[164*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O165 u165 (
-    .q(rd[165*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O166 u166 (
-    .q(rd[166*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O167 u167 (
-    .q(rd[167*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O168 u168 (
-    .q(rd[168*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O169 u169 (
-    .q(rd[169*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O170 u170 (
-    .q(rd[170*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O171 u171 (
-    .q(rd[171*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O172 u172 (
-    .q(rd[172*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O173 u173 (
-    .q(rd[173*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O174 u174 (
-    .q(rd[174*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O175 u175 (
-    .q(rd[175*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O176 u176 (
-    .q(rd[176*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O177 u177 (
-    .q(rd[177*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O178 u178 (
-    .q(rd[178*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O179 u179 (
-    .q(rd[179*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O180 u180 (
-    .q(rd[180*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O181 u181 (
-    .q(rd[181*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O182 u182 (
-    .q(rd[182*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O183 u183 (
-    .q(rd[183*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O184 u184 (
-    .q(rd[184*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O185 u185 (
-    .q(rd[185*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O186 u186 (
-    .q(rd[186*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O187 u187 (
-    .q(rd[187*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O188 u188 (
-    .q(rd[188*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O189 u189 (
-    .q(rd[189*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O190 u190 (
-    .q(rd[190*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O191 u191 (
-    .q(rd[191*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O192 u192 (
-    .q(rd[192*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O193 u193 (
-    .q(rd[193*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O194 u194 (
-    .q(rd[194*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O195 u195 (
-    .q(rd[195*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O196 u196 (
-    .q(rd[196*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O197 u197 (
-    .q(rd[197*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O198 u198 (
-    .q(rd[198*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O199 u199 (
-    .q(rd[199*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O200 u200 (
-    .q(rd[200*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O201 u201 (
-    .q(rd[201*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O202 u202 (
-    .q(rd[202*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O203 u203 (
-    .q(rd[203*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O204 u204 (
-    .q(rd[204*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O205 u205 (
-    .q(rd[205*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O206 u206 (
-    .q(rd[206*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O207 u207 (
-    .q(rd[207*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O208 u208 (
-    .q(rd[208*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O209 u209 (
-    .q(rd[209*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O210 u210 (
-    .q(rd[210*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O211 u211 (
-    .q(rd[211*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O212 u212 (
-    .q(rd[212*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O213 u213 (
-    .q(rd[213*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O214 u214 (
-    .q(rd[214*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O215 u215 (
-    .q(rd[215*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O216 u216 (
-    .q(rd[216*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O217 u217 (
-    .q(rd[217*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O218 u218 (
-    .q(rd[218*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O219 u219 (
-    .q(rd[219*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O220 u220 (
-    .q(rd[220*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O221 u221 (
-    .q(rd[221*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O222 u222 (
-    .q(rd[222*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O223 u223 (
-    .q(rd[223*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O224 u224 (
-    .q(rd[224*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O225 u225 (
-    .q(rd[225*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O226 u226 (
-    .q(rd[226*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O227 u227 (
-    .q(rd[227*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O228 u228 (
-    .q(rd[228*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O229 u229 (
-    .q(rd[229*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O230 u230 (
-    .q(rd[230*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O231 u231 (
-    .q(rd[231*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O232 u232 (
-    .q(rd[232*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O233 u233 (
-    .q(rd[233*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O234 u234 (
-    .q(rd[234*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O235 u235 (
-    .q(rd[235*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O236 u236 (
-    .q(rd[236*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O237 u237 (
-    .q(rd[237*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O238 u238 (
-    .q(rd[238*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O239 u239 (
-    .q(rd[239*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O240 u240 (
-    .q(rd[240*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O241 u241 (
-    .q(rd[241*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O242 u242 (
-    .q(rd[242*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O243 u243 (
-    .q(rd[243*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O244 u244 (
-    .q(rd[244*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O245 u245 (
-    .q(rd[245*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O246 u246 (
-    .q(rd[246*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O247 u247 (
-    .q(rd[247*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O248 u248 (
-    .q(rd[248*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O249 u249 (
-    .q(rd[249*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O250 u250 (
-    .q(rd[250*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O251 u251 (
-    .q(rd[251*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O252 u252 (
-    .q(rd[252*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O253 u253 (
-    .q(rd[253*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O254 u254 (
-    .q(rd[254*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L01O255 u255 (
-    .q(rd[255*18*2 +:18*2]),
-    .address(ra),
-    .clock(clk)
-);
 endmodule
 
 module LAYER2 (
@@ -2104,26 +1490,26 @@ module LAYER2 (
     input wire s_last,
     input wire [$clog2(56):0] s_col,
     input wire [$clog2(56):0] s_row,
-    input wire [256*32-1:0] s_data,
+    input wire [128*32-1:0] s_data,
     output reg m_valid,
-    output reg [$clog2(1):0] m_chan,
+    output reg [$clog2(2):0] m_chan,
     output reg m_last,
     output reg [$clog2(56):0] m_col,
     output reg [$clog2(56):0] m_row,
-    output reg [256*32-1:0] m_data
+    output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=1,OCHAN=256,OWIDTH=56;
+parameter OCMUX=2,OCHAN=256,OWIDTH=56;
 
 reg [$clog2(140):0] strip_wa [7-1:0];
 reg strip_wen [7-1:0];
 reg signed [$clog2(140)+1:0] strip_ra [7-1:0];
-reg signed [$clog2(4608)+1:0] weight_ra;
+reg signed [$clog2(2304)+1:0] weight_ra;
 reg [7-1:0] strip_zpad;
 reg [7-1:0] strip_zpad_q;
-reg signed [$clog2(512)+1:0] ic;
-reg [$clog2(512):0] ic_q,ic_qq;
-reg [$clog2(1):0] ochan_sel;
+reg signed [$clog2(256)+1:0] ic;
+reg [$clog2(256):0] ic_q,ic_qq;
+reg [$clog2(2):0] ochan_sel;
 reg [$clog2(7):0] strip_sel;
 reg [4:0] alu_op;
 
@@ -2133,8 +1519,8 @@ reg s_last_q;
 reg [$clog2(2):0] s_chan_q;
 reg [$clog2(56):0] s_col_q;
 reg [$clog2(56):0] s_row_q;
-reg [256*32-1:0] s_data_q;
-reg [256*32-1:0] s_data_qq;
+reg [128*32-1:0] s_data_q;
+reg [128*32-1:0] s_data_qq;
 always @(posedge s_clk) begin
     s_valid_q <= s_valid;
     s_chan_q <= s_chan;
@@ -2160,13 +1546,13 @@ always @ (posedge s_clk) begin
     strip_wa[6] <= (s_row_q%7)*(8+2)*2+(s_col_q-(6*8-1))*2+s_chan_q;
     strip_wen[6] <= s_valid_q && (s_col_q >= 6*8-1) && (s_col_q < (6+1)*8+2-1);
 end
-wire [256*32-1:0] strip_rd [7-1:0];
+wire [128*32-1:0] strip_rd [7-1:0];
 reg [32-1:0] patch [7-1:0];
 generate
 for (i=0; i<7; i=i+1) begin : STRIP
-STRIP #(140,8192) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i][$clog2(140):0]),.rd(strip_rd[i]),.wen(strip_wen[i]),.wa(strip_wa[i]),.wd(s_data_qq));
+STRIP #(140,4096) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i][$clog2(140):0]),.rd(strip_rd[i]),.wen(strip_wen[i]),.wa(strip_wa[i]),.wd(s_data_qq));
     always @(posedge m_clk) begin
-        ic_q <= ic[$clog2(512):0];
+        ic_q <= ic[$clog2(256):0];
         ic_qq <= ic_q;
         patch[i] <= strip_zpad_q[i] ? 'd0 : strip_rd[i][(ic_qq/2)*32 +:32];
     end
@@ -2176,24 +1562,24 @@ endgenerate
 wire [18*256-1:0] weight_rd;
 wire [32*256-1:0] bias_rd;
 
-WEIGHT2 weight (.clk(m_clk),.ra(weight_ra[$clog2(4608):0]),.rd(weight_rd));
+WEIGHT2 weight (.clk(m_clk),.ra(weight_ra[$clog2(2304):0]),.rd(weight_rd));
 BIAS2 bias (.clk(m_clk),.rd(bias_rd));
 
-reg [18-1:0] weight_mux [256-1:0];
-reg [32-1:0] bias_mux [256-1:0];
+reg [18-1:0] weight_mux [128-1:0];
+reg [32-1:0] bias_mux [128-1:0];
 generate
-for (i=0; i<256; i=i+1) begin : WEIGHT_MUX
+for (i=0; i<128; i=i+1) begin : WEIGHT_MUX
     always @(posedge m_clk) begin
-        weight_mux[i] <= weight_rd[(i*1+ochan_sel)*18 +:18];
-        bias_mux[i] <= bias_rd[(i*1+ochan_sel)*32 +:32];
+        weight_mux[i] <= weight_rd[(i*2+ochan_sel)*18 +:18];
+        bias_mux[i] <= bias_rd[(i*2+ochan_sel)*32 +:32];
     end
 end
 endgenerate
 
-wire [256*32-1:0] feat [7-1:0];
+wire [128*32-1:0] feat [7-1:0];
 generate
 for (i=0; i<7; i=i+1) begin : ALU_NS
-    for (j=0; j<256; j=j+1) begin : ALU_OC
+    for (j=0; j<128; j=j+1) begin : ALU_OC
         ALU alu (
         .clk(m_clk),
         .reset(reset),
@@ -2289,7 +1675,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4666.666666666664):0] m_rowwait_count;
+reg [$clog2(4530.666666666664):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -2313,7 +1699,7 @@ strip_ra[5] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[6] <= strip_zpad[6];
 strip_zpad[6] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0)) || ((ocol==7)&&(kx>0));
 strip_ra[6] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
-weight_ra <= (ky+1)*3*512+(kx+1)*512+ic;
+weight_ra <= (ky+1)*3*256+(kx+1)*256+ic;
 end
 
 always @(posedge m_clk) begin
@@ -2344,7 +1730,7 @@ always @(posedge m_clk) begin
         end
         'd2: begin
             alu_op <= 'd2;
-            if (ic==511) begin
+            if (ic==255) begin
                 if (kx==1) begin
                     if (ky==1) begin
                         m_state <= 'd3;
@@ -2400,7 +1786,7 @@ always @(posedge m_clk) begin
                     m_chan <= ochan_sel;
                     m_col <= strip_sel*8+ocol;
                     m_row <= orow;
-                    m_last <= (ochan_sel==1-1);
+                    m_last <= (ochan_sel==2-1);
                 end
                 else begin
                     m_valid <= 1'b0;
@@ -2410,7 +1796,7 @@ always @(posedge m_clk) begin
             else begin
                 m_valid <= 1'b0;
                 m_last <= 1'b0;
-                if (ochan_sel==1-1) begin
+                if (ochan_sel==2-1) begin
                     ochan_sel <= 'd0;
                     if (ocol==8-1) begin
                         ocol <= 'd0;
@@ -2448,7 +1834,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==4666.666666666664)
+           if (m_rowwait_count==4530.666666666664)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -2471,1286 +1857,646 @@ endmodule
 
 module WEIGHT2 (
     input wire clk,
-    input wire [$clog2(4608):0] ra,
+    input wire [$clog2(2304):0] ra,
     output wire [256*18-1:0] rd
 );
 weight_L02O00 u0 (
-    .q(rd[0*18*1 +:18*1]),
+    .q(rd[0*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O01 u1 (
-    .q(rd[1*18*1 +:18*1]),
+    .q(rd[1*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O02 u2 (
-    .q(rd[2*18*1 +:18*1]),
+    .q(rd[2*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O03 u3 (
-    .q(rd[3*18*1 +:18*1]),
+    .q(rd[3*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O04 u4 (
-    .q(rd[4*18*1 +:18*1]),
+    .q(rd[4*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O05 u5 (
-    .q(rd[5*18*1 +:18*1]),
+    .q(rd[5*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O06 u6 (
-    .q(rd[6*18*1 +:18*1]),
+    .q(rd[6*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O07 u7 (
-    .q(rd[7*18*1 +:18*1]),
+    .q(rd[7*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O08 u8 (
-    .q(rd[8*18*1 +:18*1]),
+    .q(rd[8*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O09 u9 (
-    .q(rd[9*18*1 +:18*1]),
+    .q(rd[9*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O10 u10 (
-    .q(rd[10*18*1 +:18*1]),
+    .q(rd[10*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O11 u11 (
-    .q(rd[11*18*1 +:18*1]),
+    .q(rd[11*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O12 u12 (
-    .q(rd[12*18*1 +:18*1]),
+    .q(rd[12*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O13 u13 (
-    .q(rd[13*18*1 +:18*1]),
+    .q(rd[13*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O14 u14 (
-    .q(rd[14*18*1 +:18*1]),
+    .q(rd[14*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O15 u15 (
-    .q(rd[15*18*1 +:18*1]),
+    .q(rd[15*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O16 u16 (
-    .q(rd[16*18*1 +:18*1]),
+    .q(rd[16*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O17 u17 (
-    .q(rd[17*18*1 +:18*1]),
+    .q(rd[17*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O18 u18 (
-    .q(rd[18*18*1 +:18*1]),
+    .q(rd[18*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O19 u19 (
-    .q(rd[19*18*1 +:18*1]),
+    .q(rd[19*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O20 u20 (
-    .q(rd[20*18*1 +:18*1]),
+    .q(rd[20*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O21 u21 (
-    .q(rd[21*18*1 +:18*1]),
+    .q(rd[21*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O22 u22 (
-    .q(rd[22*18*1 +:18*1]),
+    .q(rd[22*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O23 u23 (
-    .q(rd[23*18*1 +:18*1]),
+    .q(rd[23*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O24 u24 (
-    .q(rd[24*18*1 +:18*1]),
+    .q(rd[24*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O25 u25 (
-    .q(rd[25*18*1 +:18*1]),
+    .q(rd[25*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O26 u26 (
-    .q(rd[26*18*1 +:18*1]),
+    .q(rd[26*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O27 u27 (
-    .q(rd[27*18*1 +:18*1]),
+    .q(rd[27*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O28 u28 (
-    .q(rd[28*18*1 +:18*1]),
+    .q(rd[28*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O29 u29 (
-    .q(rd[29*18*1 +:18*1]),
+    .q(rd[29*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O30 u30 (
-    .q(rd[30*18*1 +:18*1]),
+    .q(rd[30*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O31 u31 (
-    .q(rd[31*18*1 +:18*1]),
+    .q(rd[31*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O32 u32 (
-    .q(rd[32*18*1 +:18*1]),
+    .q(rd[32*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O33 u33 (
-    .q(rd[33*18*1 +:18*1]),
+    .q(rd[33*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O34 u34 (
-    .q(rd[34*18*1 +:18*1]),
+    .q(rd[34*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O35 u35 (
-    .q(rd[35*18*1 +:18*1]),
+    .q(rd[35*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O36 u36 (
-    .q(rd[36*18*1 +:18*1]),
+    .q(rd[36*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O37 u37 (
-    .q(rd[37*18*1 +:18*1]),
+    .q(rd[37*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O38 u38 (
-    .q(rd[38*18*1 +:18*1]),
+    .q(rd[38*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O39 u39 (
-    .q(rd[39*18*1 +:18*1]),
+    .q(rd[39*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O40 u40 (
-    .q(rd[40*18*1 +:18*1]),
+    .q(rd[40*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O41 u41 (
-    .q(rd[41*18*1 +:18*1]),
+    .q(rd[41*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O42 u42 (
-    .q(rd[42*18*1 +:18*1]),
+    .q(rd[42*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O43 u43 (
-    .q(rd[43*18*1 +:18*1]),
+    .q(rd[43*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O44 u44 (
-    .q(rd[44*18*1 +:18*1]),
+    .q(rd[44*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O45 u45 (
-    .q(rd[45*18*1 +:18*1]),
+    .q(rd[45*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O46 u46 (
-    .q(rd[46*18*1 +:18*1]),
+    .q(rd[46*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O47 u47 (
-    .q(rd[47*18*1 +:18*1]),
+    .q(rd[47*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O48 u48 (
-    .q(rd[48*18*1 +:18*1]),
+    .q(rd[48*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O49 u49 (
-    .q(rd[49*18*1 +:18*1]),
+    .q(rd[49*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O50 u50 (
-    .q(rd[50*18*1 +:18*1]),
+    .q(rd[50*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O51 u51 (
-    .q(rd[51*18*1 +:18*1]),
+    .q(rd[51*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O52 u52 (
-    .q(rd[52*18*1 +:18*1]),
+    .q(rd[52*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O53 u53 (
-    .q(rd[53*18*1 +:18*1]),
+    .q(rd[53*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O54 u54 (
-    .q(rd[54*18*1 +:18*1]),
+    .q(rd[54*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O55 u55 (
-    .q(rd[55*18*1 +:18*1]),
+    .q(rd[55*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O56 u56 (
-    .q(rd[56*18*1 +:18*1]),
+    .q(rd[56*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O57 u57 (
-    .q(rd[57*18*1 +:18*1]),
+    .q(rd[57*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O58 u58 (
-    .q(rd[58*18*1 +:18*1]),
+    .q(rd[58*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O59 u59 (
-    .q(rd[59*18*1 +:18*1]),
+    .q(rd[59*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O60 u60 (
-    .q(rd[60*18*1 +:18*1]),
+    .q(rd[60*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O61 u61 (
-    .q(rd[61*18*1 +:18*1]),
+    .q(rd[61*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O62 u62 (
-    .q(rd[62*18*1 +:18*1]),
+    .q(rd[62*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O63 u63 (
-    .q(rd[63*18*1 +:18*1]),
+    .q(rd[63*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O64 u64 (
-    .q(rd[64*18*1 +:18*1]),
+    .q(rd[64*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O65 u65 (
-    .q(rd[65*18*1 +:18*1]),
+    .q(rd[65*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O66 u66 (
-    .q(rd[66*18*1 +:18*1]),
+    .q(rd[66*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O67 u67 (
-    .q(rd[67*18*1 +:18*1]),
+    .q(rd[67*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O68 u68 (
-    .q(rd[68*18*1 +:18*1]),
+    .q(rd[68*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O69 u69 (
-    .q(rd[69*18*1 +:18*1]),
+    .q(rd[69*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O70 u70 (
-    .q(rd[70*18*1 +:18*1]),
+    .q(rd[70*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O71 u71 (
-    .q(rd[71*18*1 +:18*1]),
+    .q(rd[71*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O72 u72 (
-    .q(rd[72*18*1 +:18*1]),
+    .q(rd[72*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O73 u73 (
-    .q(rd[73*18*1 +:18*1]),
+    .q(rd[73*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O74 u74 (
-    .q(rd[74*18*1 +:18*1]),
+    .q(rd[74*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O75 u75 (
-    .q(rd[75*18*1 +:18*1]),
+    .q(rd[75*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O76 u76 (
-    .q(rd[76*18*1 +:18*1]),
+    .q(rd[76*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O77 u77 (
-    .q(rd[77*18*1 +:18*1]),
+    .q(rd[77*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O78 u78 (
-    .q(rd[78*18*1 +:18*1]),
+    .q(rd[78*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O79 u79 (
-    .q(rd[79*18*1 +:18*1]),
+    .q(rd[79*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O80 u80 (
-    .q(rd[80*18*1 +:18*1]),
+    .q(rd[80*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O81 u81 (
-    .q(rd[81*18*1 +:18*1]),
+    .q(rd[81*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O82 u82 (
-    .q(rd[82*18*1 +:18*1]),
+    .q(rd[82*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O83 u83 (
-    .q(rd[83*18*1 +:18*1]),
+    .q(rd[83*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O84 u84 (
-    .q(rd[84*18*1 +:18*1]),
+    .q(rd[84*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O85 u85 (
-    .q(rd[85*18*1 +:18*1]),
+    .q(rd[85*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O86 u86 (
-    .q(rd[86*18*1 +:18*1]),
+    .q(rd[86*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O87 u87 (
-    .q(rd[87*18*1 +:18*1]),
+    .q(rd[87*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O88 u88 (
-    .q(rd[88*18*1 +:18*1]),
+    .q(rd[88*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O89 u89 (
-    .q(rd[89*18*1 +:18*1]),
+    .q(rd[89*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O90 u90 (
-    .q(rd[90*18*1 +:18*1]),
+    .q(rd[90*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O91 u91 (
-    .q(rd[91*18*1 +:18*1]),
+    .q(rd[91*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O92 u92 (
-    .q(rd[92*18*1 +:18*1]),
+    .q(rd[92*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O93 u93 (
-    .q(rd[93*18*1 +:18*1]),
+    .q(rd[93*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O94 u94 (
-    .q(rd[94*18*1 +:18*1]),
+    .q(rd[94*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O95 u95 (
-    .q(rd[95*18*1 +:18*1]),
+    .q(rd[95*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O96 u96 (
-    .q(rd[96*18*1 +:18*1]),
+    .q(rd[96*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O97 u97 (
-    .q(rd[97*18*1 +:18*1]),
+    .q(rd[97*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O98 u98 (
-    .q(rd[98*18*1 +:18*1]),
+    .q(rd[98*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O99 u99 (
-    .q(rd[99*18*1 +:18*1]),
+    .q(rd[99*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O100 u100 (
-    .q(rd[100*18*1 +:18*1]),
+    .q(rd[100*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O101 u101 (
-    .q(rd[101*18*1 +:18*1]),
+    .q(rd[101*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O102 u102 (
-    .q(rd[102*18*1 +:18*1]),
+    .q(rd[102*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O103 u103 (
-    .q(rd[103*18*1 +:18*1]),
+    .q(rd[103*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O104 u104 (
-    .q(rd[104*18*1 +:18*1]),
+    .q(rd[104*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O105 u105 (
-    .q(rd[105*18*1 +:18*1]),
+    .q(rd[105*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O106 u106 (
-    .q(rd[106*18*1 +:18*1]),
+    .q(rd[106*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O107 u107 (
-    .q(rd[107*18*1 +:18*1]),
+    .q(rd[107*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O108 u108 (
-    .q(rd[108*18*1 +:18*1]),
+    .q(rd[108*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O109 u109 (
-    .q(rd[109*18*1 +:18*1]),
+    .q(rd[109*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O110 u110 (
-    .q(rd[110*18*1 +:18*1]),
+    .q(rd[110*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O111 u111 (
-    .q(rd[111*18*1 +:18*1]),
+    .q(rd[111*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O112 u112 (
-    .q(rd[112*18*1 +:18*1]),
+    .q(rd[112*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O113 u113 (
-    .q(rd[113*18*1 +:18*1]),
+    .q(rd[113*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O114 u114 (
-    .q(rd[114*18*1 +:18*1]),
+    .q(rd[114*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O115 u115 (
-    .q(rd[115*18*1 +:18*1]),
+    .q(rd[115*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O116 u116 (
-    .q(rd[116*18*1 +:18*1]),
+    .q(rd[116*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O117 u117 (
-    .q(rd[117*18*1 +:18*1]),
+    .q(rd[117*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O118 u118 (
-    .q(rd[118*18*1 +:18*1]),
+    .q(rd[118*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O119 u119 (
-    .q(rd[119*18*1 +:18*1]),
+    .q(rd[119*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O120 u120 (
-    .q(rd[120*18*1 +:18*1]),
+    .q(rd[120*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O121 u121 (
-    .q(rd[121*18*1 +:18*1]),
+    .q(rd[121*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O122 u122 (
-    .q(rd[122*18*1 +:18*1]),
+    .q(rd[122*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O123 u123 (
-    .q(rd[123*18*1 +:18*1]),
+    .q(rd[123*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O124 u124 (
-    .q(rd[124*18*1 +:18*1]),
+    .q(rd[124*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O125 u125 (
-    .q(rd[125*18*1 +:18*1]),
+    .q(rd[125*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O126 u126 (
-    .q(rd[126*18*1 +:18*1]),
+    .q(rd[126*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
 weight_L02O127 u127 (
-    .q(rd[127*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O128 u128 (
-    .q(rd[128*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O129 u129 (
-    .q(rd[129*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O130 u130 (
-    .q(rd[130*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O131 u131 (
-    .q(rd[131*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O132 u132 (
-    .q(rd[132*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O133 u133 (
-    .q(rd[133*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O134 u134 (
-    .q(rd[134*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O135 u135 (
-    .q(rd[135*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O136 u136 (
-    .q(rd[136*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O137 u137 (
-    .q(rd[137*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O138 u138 (
-    .q(rd[138*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O139 u139 (
-    .q(rd[139*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O140 u140 (
-    .q(rd[140*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O141 u141 (
-    .q(rd[141*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O142 u142 (
-    .q(rd[142*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O143 u143 (
-    .q(rd[143*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O144 u144 (
-    .q(rd[144*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O145 u145 (
-    .q(rd[145*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O146 u146 (
-    .q(rd[146*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O147 u147 (
-    .q(rd[147*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O148 u148 (
-    .q(rd[148*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O149 u149 (
-    .q(rd[149*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O150 u150 (
-    .q(rd[150*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O151 u151 (
-    .q(rd[151*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O152 u152 (
-    .q(rd[152*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O153 u153 (
-    .q(rd[153*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O154 u154 (
-    .q(rd[154*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O155 u155 (
-    .q(rd[155*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O156 u156 (
-    .q(rd[156*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O157 u157 (
-    .q(rd[157*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O158 u158 (
-    .q(rd[158*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O159 u159 (
-    .q(rd[159*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O160 u160 (
-    .q(rd[160*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O161 u161 (
-    .q(rd[161*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O162 u162 (
-    .q(rd[162*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O163 u163 (
-    .q(rd[163*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O164 u164 (
-    .q(rd[164*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O165 u165 (
-    .q(rd[165*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O166 u166 (
-    .q(rd[166*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O167 u167 (
-    .q(rd[167*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O168 u168 (
-    .q(rd[168*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O169 u169 (
-    .q(rd[169*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O170 u170 (
-    .q(rd[170*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O171 u171 (
-    .q(rd[171*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O172 u172 (
-    .q(rd[172*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O173 u173 (
-    .q(rd[173*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O174 u174 (
-    .q(rd[174*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O175 u175 (
-    .q(rd[175*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O176 u176 (
-    .q(rd[176*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O177 u177 (
-    .q(rd[177*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O178 u178 (
-    .q(rd[178*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O179 u179 (
-    .q(rd[179*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O180 u180 (
-    .q(rd[180*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O181 u181 (
-    .q(rd[181*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O182 u182 (
-    .q(rd[182*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O183 u183 (
-    .q(rd[183*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O184 u184 (
-    .q(rd[184*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O185 u185 (
-    .q(rd[185*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O186 u186 (
-    .q(rd[186*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O187 u187 (
-    .q(rd[187*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O188 u188 (
-    .q(rd[188*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O189 u189 (
-    .q(rd[189*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O190 u190 (
-    .q(rd[190*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O191 u191 (
-    .q(rd[191*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O192 u192 (
-    .q(rd[192*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O193 u193 (
-    .q(rd[193*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O194 u194 (
-    .q(rd[194*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O195 u195 (
-    .q(rd[195*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O196 u196 (
-    .q(rd[196*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O197 u197 (
-    .q(rd[197*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O198 u198 (
-    .q(rd[198*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O199 u199 (
-    .q(rd[199*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O200 u200 (
-    .q(rd[200*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O201 u201 (
-    .q(rd[201*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O202 u202 (
-    .q(rd[202*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O203 u203 (
-    .q(rd[203*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O204 u204 (
-    .q(rd[204*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O205 u205 (
-    .q(rd[205*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O206 u206 (
-    .q(rd[206*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O207 u207 (
-    .q(rd[207*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O208 u208 (
-    .q(rd[208*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O209 u209 (
-    .q(rd[209*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O210 u210 (
-    .q(rd[210*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O211 u211 (
-    .q(rd[211*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O212 u212 (
-    .q(rd[212*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O213 u213 (
-    .q(rd[213*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O214 u214 (
-    .q(rd[214*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O215 u215 (
-    .q(rd[215*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O216 u216 (
-    .q(rd[216*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O217 u217 (
-    .q(rd[217*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O218 u218 (
-    .q(rd[218*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O219 u219 (
-    .q(rd[219*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O220 u220 (
-    .q(rd[220*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O221 u221 (
-    .q(rd[221*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O222 u222 (
-    .q(rd[222*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O223 u223 (
-    .q(rd[223*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O224 u224 (
-    .q(rd[224*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O225 u225 (
-    .q(rd[225*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O226 u226 (
-    .q(rd[226*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O227 u227 (
-    .q(rd[227*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O228 u228 (
-    .q(rd[228*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O229 u229 (
-    .q(rd[229*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O230 u230 (
-    .q(rd[230*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O231 u231 (
-    .q(rd[231*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O232 u232 (
-    .q(rd[232*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O233 u233 (
-    .q(rd[233*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O234 u234 (
-    .q(rd[234*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O235 u235 (
-    .q(rd[235*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O236 u236 (
-    .q(rd[236*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O237 u237 (
-    .q(rd[237*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O238 u238 (
-    .q(rd[238*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O239 u239 (
-    .q(rd[239*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O240 u240 (
-    .q(rd[240*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O241 u241 (
-    .q(rd[241*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O242 u242 (
-    .q(rd[242*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O243 u243 (
-    .q(rd[243*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O244 u244 (
-    .q(rd[244*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O245 u245 (
-    .q(rd[245*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O246 u246 (
-    .q(rd[246*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O247 u247 (
-    .q(rd[247*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O248 u248 (
-    .q(rd[248*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O249 u249 (
-    .q(rd[249*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O250 u250 (
-    .q(rd[250*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O251 u251 (
-    .q(rd[251*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O252 u252 (
-    .q(rd[252*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O253 u253 (
-    .q(rd[253*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O254 u254 (
-    .q(rd[254*18*1 +:18*1]),
-    .address(ra),
-    .clock(clk)
-);
-weight_L02O255 u255 (
-    .q(rd[255*18*1 +:18*1]),
+    .q(rd[127*18*2 +:18*2]),
     .address(ra),
     .clock(clk)
 );
@@ -3761,11 +2507,11 @@ module LAYER3 (
     input wire m_clk,
     input wire reset,
     input wire s_valid,
-    input wire [$clog2(1):0] s_chan,
+    input wire [$clog2(2):0] s_chan,
     input wire s_last,
     input wire [$clog2(56):0] s_col,
     input wire [$clog2(56):0] s_row,
-    input wire [256*32-1:0] s_data,
+    input wire [128*32-1:0] s_data,
     output reg m_valid,
     output reg [$clog2(2):0] m_chan,
     output reg m_last,
@@ -3776,9 +2522,9 @@ module LAYER3 (
 
 parameter OCMUX=2,OCHAN=256,OWIDTH=56;
 
-reg [$clog2(70):0] strip_wa [7-1:0];
+reg [$clog2(140):0] strip_wa [7-1:0];
 reg strip_wen [7-1:0];
-reg signed [$clog2(70)+1:0] strip_ra [7-1:0];
+reg signed [$clog2(140)+1:0] strip_ra [7-1:0];
 reg signed [$clog2(2304)+1:0] weight_ra;
 reg [7-1:0] strip_zpad;
 reg [7-1:0] strip_zpad_q;
@@ -3791,11 +2537,11 @@ reg [4:0] alu_op;
 genvar i,j;
 reg s_valid_q;
 reg s_last_q;
-reg [$clog2(1):0] s_chan_q;
+reg [$clog2(2):0] s_chan_q;
 reg [$clog2(56):0] s_col_q;
 reg [$clog2(56):0] s_row_q;
-reg [256*32-1:0] s_data_q;
-reg [256*32-1:0] s_data_qq;
+reg [128*32-1:0] s_data_q;
+reg [128*32-1:0] s_data_qq;
 always @(posedge s_clk) begin
     s_valid_q <= s_valid;
     s_chan_q <= s_chan;
@@ -3806,30 +2552,30 @@ always @(posedge s_clk) begin
     s_data_qq <= s_data_q;
 end
 always @ (posedge s_clk) begin
-    strip_wa[0] <= (s_row_q%7)*(8+2)*1+(s_col_q-(0*8-1))*1+s_chan_q;
+    strip_wa[0] <= (s_row_q%7)*(8+2)*2+(s_col_q-(0*8-1))*2+s_chan_q;
     strip_wen[0] <= s_valid_q && (s_col_q >= 0*8) && (s_col_q < (0+1)*8+2-1);
-    strip_wa[1] <= (s_row_q%7)*(8+2)*1+(s_col_q-(1*8-1))*1+s_chan_q;
+    strip_wa[1] <= (s_row_q%7)*(8+2)*2+(s_col_q-(1*8-1))*2+s_chan_q;
     strip_wen[1] <= s_valid_q && (s_col_q >= 1*8-1) && (s_col_q < (1+1)*8+2-1);
-    strip_wa[2] <= (s_row_q%7)*(8+2)*1+(s_col_q-(2*8-1))*1+s_chan_q;
+    strip_wa[2] <= (s_row_q%7)*(8+2)*2+(s_col_q-(2*8-1))*2+s_chan_q;
     strip_wen[2] <= s_valid_q && (s_col_q >= 2*8-1) && (s_col_q < (2+1)*8+2-1);
-    strip_wa[3] <= (s_row_q%7)*(8+2)*1+(s_col_q-(3*8-1))*1+s_chan_q;
+    strip_wa[3] <= (s_row_q%7)*(8+2)*2+(s_col_q-(3*8-1))*2+s_chan_q;
     strip_wen[3] <= s_valid_q && (s_col_q >= 3*8-1) && (s_col_q < (3+1)*8+2-1);
-    strip_wa[4] <= (s_row_q%7)*(8+2)*1+(s_col_q-(4*8-1))*1+s_chan_q;
+    strip_wa[4] <= (s_row_q%7)*(8+2)*2+(s_col_q-(4*8-1))*2+s_chan_q;
     strip_wen[4] <= s_valid_q && (s_col_q >= 4*8-1) && (s_col_q < (4+1)*8+2-1);
-    strip_wa[5] <= (s_row_q%7)*(8+2)*1+(s_col_q-(5*8-1))*1+s_chan_q;
+    strip_wa[5] <= (s_row_q%7)*(8+2)*2+(s_col_q-(5*8-1))*2+s_chan_q;
     strip_wen[5] <= s_valid_q && (s_col_q >= 5*8-1) && (s_col_q < (5+1)*8+2-1);
-    strip_wa[6] <= (s_row_q%7)*(8+2)*1+(s_col_q-(6*8-1))*1+s_chan_q;
+    strip_wa[6] <= (s_row_q%7)*(8+2)*2+(s_col_q-(6*8-1))*2+s_chan_q;
     strip_wen[6] <= s_valid_q && (s_col_q >= 6*8-1) && (s_col_q < (6+1)*8+2-1);
 end
-wire [256*32-1:0] strip_rd [7-1:0];
+wire [128*32-1:0] strip_rd [7-1:0];
 reg [32-1:0] patch [7-1:0];
 generate
 for (i=0; i<7; i=i+1) begin : STRIP
-STRIP #(70,8192) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i][$clog2(70):0]),.rd(strip_rd[i]),.wen(strip_wen[i]),.wa(strip_wa[i]),.wd(s_data_qq));
+STRIP #(140,4096) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i][$clog2(140):0]),.rd(strip_rd[i]),.wen(strip_wen[i]),.wa(strip_wa[i]),.wd(s_data_qq));
     always @(posedge m_clk) begin
         ic_q <= ic[$clog2(256):0];
         ic_qq <= ic_q;
-        patch[i] <= strip_zpad_q[i] ? 'd0 : strip_rd[i][(ic_qq/1)*32 +:32];
+        patch[i] <= strip_zpad_q[i] ? 'd0 : strip_rd[i][(ic_qq/2)*32 +:32];
     end
 end
 endgenerate
@@ -3955,25 +2701,25 @@ reg [$clog2(4530.666666666664):0] m_rowwait_count;
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
 strip_zpad[0] <= ((orow==0)&&(ky<0)) || ((ocol==0)&&(kx<0)) || ((orow==55)&&(ky>0));
-strip_ra[0] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[0] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[1] <= strip_zpad[1];
 strip_zpad[1] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0));
-strip_ra[1] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[1] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[2] <= strip_zpad[2];
 strip_zpad[2] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0));
-strip_ra[2] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[2] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[3] <= strip_zpad[3];
 strip_zpad[3] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0));
-strip_ra[3] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[3] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[4] <= strip_zpad[4];
 strip_zpad[4] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0));
-strip_ra[4] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[4] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[5] <= strip_zpad[5];
 strip_zpad[5] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0));
-strip_ra[5] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[5] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 strip_zpad_q[6] <= strip_zpad[6];
 strip_zpad[6] <= ((orow==0)&&(ky<0)) || ((orow==55)&&(ky>0)) || ((ocol==7)&&(kx>0));
-strip_ra[6] <= ((ky+(orow*1))%7)*(8+2)*1+kx*1+ocol*1*1+(ic%1)+1;
+strip_ra[6] <= ((ky+(orow*1))%7)*(8+2)*2+kx*2+ocol*1*2+(ic%2)+2;
 weight_ra <= (ky+1)*3*256+(kx+1)*256+ic;
 end
 
@@ -10760,6 +9506,388 @@ weight_L13O02 u2 (
 );
 weight_L13O03 u3 (
     .q(rd[3*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+endmodule
+
+module LAYER14 (
+    input wire s_clk,
+    input wire m_clk,
+    input wire reset,
+    input wire s_valid,
+    input wire [$clog2(64):0] s_chan,
+    input wire s_last,
+    input wire [$clog2(1):0] s_col,
+    input wire [$clog2(1):0] s_row,
+    input wire [4*32-1:0] s_data,
+    output reg m_valid,
+    output reg [$clog2(64):0] m_chan,
+    output reg m_last,
+    output reg [$clog2(1):0] m_col,
+    output reg [$clog2(1):0] m_row,
+    output reg [8*32-1:0] m_data
+);
+
+parameter OCMUX=64,OCHAN=512,OWIDTH=1;
+
+reg [$clog2(960):0] strip_wa [1-1:0];
+reg strip_wen [1-1:0];
+reg signed [$clog2(960)+1:0] strip_ra [1-1:0];
+reg signed [$clog2(256)+1:0] weight_ra;
+reg [1-1:0] strip_zpad;
+reg [1-1:0] strip_zpad_q;
+reg signed [$clog2(256)+1:0] ic;
+reg [$clog2(256):0] ic_q,ic_qq;
+reg [$clog2(64):0] ochan_sel;
+reg [$clog2(1):0] strip_sel;
+reg [4:0] alu_op;
+
+genvar i,j;
+reg s_valid_q;
+reg s_last_q;
+reg [$clog2(64):0] s_chan_q;
+reg [$clog2(1):0] s_col_q;
+reg [$clog2(1):0] s_row_q;
+reg [4*32-1:0] s_data_q;
+reg [4*32-1:0] s_data_qq;
+always @(posedge s_clk) begin
+    s_valid_q <= s_valid;
+    s_chan_q <= s_chan;
+    s_last_q <= s_last;
+    s_col_q <= s_col;
+    s_row_q <= s_row;
+    s_data_q <= s_data;
+    s_data_qq <= s_data_q;
+end
+always @ (posedge s_clk) begin
+    strip_wa[0] <= (s_row_q%5)*(1+2)*64+(s_col_q-(0*1-1))*64+s_chan_q;
+    strip_wen[0] <= s_valid_q && (s_col_q >= 0*1) && (s_col_q < (0+1)*1+2-1);
+end
+wire [4*32-1:0] strip_rd [1-1:0];
+reg [32-1:0] patch [1-1:0];
+generate
+for (i=0; i<1; i=i+1) begin : STRIP
+STRIP #(960,128) strip (.wclk(s_clk),.rclk(m_clk),.reset(reset),.ra(strip_ra[i][$clog2(960):0]),.rd(strip_rd[i]),.wen(strip_wen[i]),.wa(strip_wa[i]),.wd(s_data_qq));
+    always @(posedge m_clk) begin
+        ic_q <= ic[$clog2(256):0];
+        ic_qq <= ic_q;
+        patch[i] <= strip_zpad_q[i] ? 'd0 : strip_rd[i][(ic_qq/64)*32 +:32];
+    end
+end
+endgenerate
+
+wire [18*512-1:0] weight_rd;
+wire [32*512-1:0] bias_rd;
+
+WEIGHT14 weight (.clk(m_clk),.ra(weight_ra[$clog2(256):0]),.rd(weight_rd));
+BIAS14 bias (.clk(m_clk),.rd(bias_rd));
+
+reg [18-1:0] weight_mux [8-1:0];
+reg [32-1:0] bias_mux [8-1:0];
+generate
+for (i=0; i<8; i=i+1) begin : WEIGHT_MUX
+    always @(posedge m_clk) begin
+        weight_mux[i] <= weight_rd[(i*64+ochan_sel)*18 +:18];
+        bias_mux[i] <= bias_rd[(i*64+ochan_sel)*32 +:32];
+    end
+end
+endgenerate
+
+wire [8*32-1:0] feat [1-1:0];
+generate
+for (i=0; i<1; i=i+1) begin : ALU_NS
+    for (j=0; j<8; j=j+1) begin : ALU_OC
+        ALU alu (
+        .clk(m_clk),
+        .reset(reset),
+        .alu_op(alu_op),
+        .patch(patch[i]),
+        .weight(weight_mux[j]),
+        .bias(bias_mux[j]),
+        .feat(feat[i][32*j +:32]));
+    end
+end
+endgenerate
+
+always @(posedge m_clk) begin
+    m_data <= feat[strip_sel];
+end
+
+
+reg [$clog2(1):0] icount;
+reg row_cyc;
+always @ (posedge s_clk) begin : S_ICOUNT
+    if (reset) begin
+        icount <= 'd0;
+        row_cyc <= 'b0;
+    end
+    else if (s_last_q) begin
+        if (icount==1-1) begin
+            icount <= 'd0;
+            if (s_row_q >= 0)
+                row_cyc <= 1'b1;
+            else
+                row_cyc <= 1'b0;
+        end
+        else begin
+            icount <= icount+'d1;
+            row_cyc <= 1'b0;
+        end
+    end
+    else begin
+        row_cyc <= 1'b0;
+    end
+end
+
+reg s_row_req;
+reg m_row_ack;
+reg m_row_req0,m_row_req1,m_row_req;
+reg s_row_ack0,s_row_ack1,s_row_ack;
+always @(posedge m_clk) begin : M_SYNC
+    m_row_req0 <= s_row_req;
+    m_row_req1 <= m_row_req0;
+    m_row_req <= m_row_req1;
+end
+always @(posedge s_clk) begin : S_SYNC
+    s_row_ack0 <= m_row_ack;
+    s_row_ack1 <= s_row_ack0;
+    s_row_ack <= s_row_ack1;
+end
+
+reg [1:0] s_state;
+reg row_go, row_clr;
+always @ (posedge s_clk) begin : S_FSM
+    if (reset | row_clr)
+        row_go <= 1'b0;
+    else if (row_cyc)
+        row_go <= 1'b1;
+    if (reset) begin
+        s_state <= 'd0;
+        row_clr <= 1'b0;
+    end
+    else if (s_state=='d0) begin
+        if (row_go) begin
+            s_state <= 'd1;
+            row_clr <= 1'b1;
+        end
+    end
+    else if (s_state=='d1) begin
+        row_clr <= 1'b0;
+        s_row_req <= 1'b1;
+        if (s_row_ack) begin
+            s_state <= 'd2;
+        end
+    end
+    else if (s_state=='d2) begin
+        s_row_req <= 1'b0;
+        if (~s_row_ack) begin
+            s_state <= 'd0;
+        end
+    end
+end
+
+reg [4:0] m_state;
+reg [3:0] pipe_count;
+reg signed [$clog2(1)+1:0] ky;
+reg signed [$clog2(1)+1:0] kx;
+reg signed [$clog2(1)+1:0] ocol;
+reg signed [$clog2(1)+1:0] orow;
+reg [$clog2(316245.3333333333):0] m_rowwait_count;
+
+always @ (posedge m_clk) begin
+strip_zpad_q[0] <= strip_zpad[0];
+strip_zpad[0] <= 'b0;
+strip_ra[0] <= (((ky+1)+(orow*1))%5)*(1+2)*64+(kx+1)*64+ocol*1*64+(ic%64)+64;
+weight_ra <= (ky+1)*1*256+(kx+1)*256+ic;
+end
+
+always @(posedge m_clk) begin
+    if (reset) begin
+        m_state <= 'd0;
+        orow <= 'd0;
+        m_row_ack <= 1'b0;
+        m_valid <= 1'b0;
+        m_last <= 1'b0;
+    end
+    else begin
+        case (m_state)
+        'd0: begin
+            ocol <= 'd0;
+            ochan_sel <= 'd0;
+            alu_op <= 'd0;
+            if (m_row_req) begin
+                m_state <= 'd1;
+            end
+        end
+        'd1: begin
+            ky <= -1;
+            kx <= -1;
+            ic <= 0;
+            pipe_count <= 'd0;
+            alu_op <= 'd1;
+            m_state <= 'd2;
+        end
+        'd2: begin
+            alu_op <= 'd2;
+            if (ic==255) begin
+                if (kx==-1) begin
+                    if (ky==-1) begin
+                        m_state <= 'd3;
+                    end
+                    else begin
+                        ky <= ky+'d1;
+                        kx <= -1;
+                        ic <= 'd0;
+                    end
+                end
+                else begin
+                    kx <= kx+'d1;
+                    ic <= 'd0;
+                end
+            end
+            else begin
+                ic <= ic+'d1;
+            end
+        end
+        'd3: begin
+            if (pipe_count==2) begin
+                alu_op <= 'd4;
+                m_state <= 'd4;
+            end
+            else
+                pipe_count <= pipe_count+'d1;
+        end
+        'd4: begin
+            alu_op <= 'd5;
+            m_state <= 'd8;
+            strip_sel <= 'd0;
+        end
+        'd8: begin
+            alu_op <= 'd5;
+            m_state <= 'd9;
+            strip_sel <= 'd0;
+        end
+        'd9: begin
+            alu_op <= 'd5;
+            m_state <= 'd5;
+            strip_sel <= 'd0;
+        end
+        'd5: begin
+            alu_op <= 'd5;
+            m_state <= 'd6;
+        end
+        'd6: begin
+            alu_op <= 'd0;
+            if (strip_sel<1) begin
+                strip_sel <= strip_sel+'d1;
+                if (strip_sel*1+ocol < 1) begin
+                    m_valid <= 1'b1;
+                    m_chan <= ochan_sel;
+                    m_col <= strip_sel*1+ocol;
+                    m_row <= orow;
+                    m_last <= (ochan_sel==64-1);
+                end
+                else begin
+                    m_valid <= 1'b0;
+                    m_last <= 1'b0;
+                end
+            end
+            else begin
+                m_valid <= 1'b0;
+                m_last <= 1'b0;
+                if (ochan_sel==64-1) begin
+                    ochan_sel <= 'd0;
+                    if (ocol==1-1) begin
+                        ocol <= 'd0;
+                        if (orow==1-1)
+                            orow <= 'd0;
+                        else
+                            orow <= orow+'d1;
+                        m_state <= 'd7;
+                    end
+                    else begin
+                        ocol <= ocol+'d1;
+                        m_state <= 'd1;
+                    end
+                end
+                else begin
+                        m_state <= 'd1;
+                    ochan_sel <= ochan_sel+'d1;
+                end
+            end
+       end
+       'd7: begin
+           m_row_ack <= 1'b1;
+           if (~m_row_req) begin
+               m_row_ack <= 1'b0;
+               m_state<= 'd0;
+           end
+       end
+       'd10: begin
+           if (m_rowwait_count==316245.3333333333)
+                m_state <= 'd1;
+           else
+               m_rowwait_count <= m_rowwait_count+1;
+       end
+       endcase
+   end
+end
+endmodule
+
+module BIAS14 (
+    input wire clk,
+    output wire [512*32-1:0] rd
+);
+bias_L14 u0 (
+    .q(rd),
+    .address('d0),
+    .clock(clk)
+);
+endmodule
+
+module WEIGHT14 (
+    input wire clk,
+    input wire [$clog2(256):0] ra,
+    output wire [512*18-1:0] rd
+);
+weight_L14O00 u0 (
+    .q(rd[0*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O01 u1 (
+    .q(rd[1*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O02 u2 (
+    .q(rd[2*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O03 u3 (
+    .q(rd[3*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O04 u4 (
+    .q(rd[4*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O05 u5 (
+    .q(rd[5*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O06 u6 (
+    .q(rd[6*18*64 +:18*64]),
+    .address(ra),
+    .clock(clk)
+);
+weight_L14O07 u7 (
+    .q(rd[7*18*64 +:18*64]),
     .address(ra),
     .clock(clk)
 );
