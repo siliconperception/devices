@@ -6,3 +6,11 @@
 - Verilog testbench to verify that the Verilog matches PyTorch
 - Verilog code for Quartus compilation, uses bfloat18 weights
 - Quartus .ip files, .sdc
+
+# DX120P pose decoder
+- PyTorch model for training
+- Verilog code for Quartus compilation, uses bfloat18 weights
+- Quartus .ip files, dummy top.v, top.sdc
+- functional verification TBD
+- pretraining TBD
+- evaluation TBD
