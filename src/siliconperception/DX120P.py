@@ -13,8 +13,8 @@ class DX120P(
 ):
     def __init__(self):
         super().__init__()
-        self.layer1  = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(512), nn.ReLU())
-        self.layer2  = nn.Sequential(nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(256), nn.ReLU())
+        self.layer1  = nn.Sequential(nn.Conv2d(512, 256, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(256), nn.ReLU())
+        self.layer2  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(256), nn.ReLU())
         self.layer3  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(256), nn.ReLU())
         self.layer4  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(256), nn.ReLU())
         self.layer5  = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(256), nn.ReLU())
@@ -45,7 +45,7 @@ class DX120P(
         out = self.layer14(out)
         return out
 
-# create a new PT model 1) 7x7 output only 2) merge batchnorm 3) quantize weights to FP18
+# create a new PT model 1) merge batchnorm 2) quantize weights to FP18
 # save the new PT model and write .memh files for the weights and bias
 class DX120P_HW(nn.Module):
     # M=3,E=4,center=-2
@@ -84,7 +84,7 @@ class DX120P_HW(nn.Module):
         self.layer11 = nn.Sequential(self.fuse_conv_and_bn(model.layer11[0],model.layer11[1]), nn.ReLU())
         self.layer12 = nn.Sequential(self.fuse_conv_and_bn(model.layer12[0],model.layer12[1]), nn.ReLU())
         self.layer13 = nn.Sequential(self.fuse_conv_and_bn(model.layer13[0],model.layer13[1]), nn.ReLU())
-        self.layer14 = nn.Sequential(self.fuse_conv_and_bn(model.layer14[0],model.layer14[1]), nn.ReLU())
+        self.layer14 = model.layer14
 
     def fp_quantize(self,x,M,E,center): # float32 -> uint32
         bias = (2**(E-1))-center
@@ -129,7 +129,7 @@ class DX120P_HW(nn.Module):
         self.weight11 = self.fp_quantize(self.layer11[0].weight.detach().numpy(),M,E,center)
         self.weight12 = self.fp_quantize(self.layer12[0].weight.detach().numpy(),M,E,center)
         self.weight13 = self.fp_quantize(self.layer13[0].weight.detach().numpy(),M,E,center)
-        self.weight14 = self.fp_quantize(self.layer14[0].weight.detach().numpy(),M,E,center)
+        self.weight14 = self.fp_quantize(self.layer14.weight.detach().numpy(),M,E,center)
 
     def dequantize(self,M,E,center):
         self.layer1[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight1,M,E,center))
@@ -145,7 +145,7 @@ class DX120P_HW(nn.Module):
         self.layer11[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight11,M,E,center))
         self.layer12[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight12,M,E,center))
         self.layer13[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight13,M,E,center))
-        self.layer14[0].weight.data = torch.from_numpy(self.fp_dequantize(self.weight14,M,E,center))
+        self.layer14.weight.data = torch.from_numpy(self.fp_dequantize(self.weight14,M,E,center))
 
     def write_weight(self,w,fn):
         w = np.moveaxis(w,1,-1) # move ichan to end
@@ -154,6 +154,7 @@ class DX120P_HW(nn.Module):
         for i in range(w.shape[-1]):
             m+= ''.join(['{:08X}'.format(w[ii,i]) for ii in range(w.shape[0]-1,-1,-1)])
             m+='\n'
+        m = m.rstrip()
         with open(fn,'w') as f:
             print(m,file=f)
 
@@ -172,18 +173,23 @@ class DX120P_HW(nn.Module):
             for c in range(x.shape[1]):
                 s+= ''.join(['{:08X}'.format(np.frombuffer(x[r,c,i].tobytes(),dtype=np.uint32)[0]) for i in range(x.shape[-1])])
                 s+='\n'
+        s = s.rstrip()
         with open(fn,'w') as f:
             print(s,file=f)
 
     def write_input(self,x,fn):
         x = x.cpu().detach().numpy()
         x = np.moveaxis(x,0,-1)
-        x = x.reshape(-1,3)
+        x = x.reshape(-1,512)
         x = x.flatten()
         b = np.frombuffer(x.tobytes(),dtype=np.uint32) # float32 -> uint32
-        b = b.reshape(-1,3)
+        b = b.reshape(-1,512)
         m=''
-        m=m.join(['{:08X}{:08X}{:08X}\n'.format(t[2],t[1],t[0]) for t in b])
+        for t in b:
+            for i in range(512):
+                m += '{:08X}'.format(t[511-i])
+            m += '\n'
+        m = m.rstrip()
         with open(fn,'w') as f:
             print(m,file=f)
 
@@ -245,9 +251,9 @@ class DX120P_HW(nn.Module):
         self.write_weight(self.weight13,fn_prefix+'weight13.memh')
         self.write_bias(self.layer13[0].bias.cpu().detach().numpy(),fn_prefix+'bias13.memh')
         self.write_activation(self.out13.cpu().detach().numpy(),fn_prefix+'activation13.memh')
-        print('weight14',self.weight14.shape,self.weight14.dtype, 'bias14', self.layer14[0].bias.cpu().detach().numpy().shape,self.layer14[0].bias.cpu().detach().numpy().dtype,'activation',self.out14.shape,self.out14.dtype)
+        print('weight14',self.weight14.shape,self.weight14.dtype, 'bias14', self.layer14.bias.cpu().detach().numpy().shape,self.layer14.bias.cpu().detach().numpy().dtype,'activation',self.out14.shape,self.out14.dtype)
         self.write_weight(self.weight14,fn_prefix+'weight14.memh')
-        self.write_bias(self.layer14[0].bias.cpu().detach().numpy(),fn_prefix+'bias14.memh')
+        self.write_bias(self.layer14.bias.cpu().detach().numpy(),fn_prefix+'bias14.memh')
         self.write_activation(self.out14.cpu().detach().numpy(),fn_prefix+'activation14.memh')
 
     def forward(self, x):

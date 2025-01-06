@@ -8,7 +8,7 @@ from collections import OrderedDict
 class IE120R(
     nn.Module,
     PyTorchModelHubMixin, 
-    repo_url="https://github.com/siliconperception/models",
+    repo_url="https://github.com/siliconperception/devices",
     license="mit",
 ):
     def __init__(self):

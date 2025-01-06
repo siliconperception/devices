@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "siliconperception"
-version = "0.0.11"
+version = "0.0.13"
 authors = [
   { name="Rob Liston", email="rliston@siliconperception.com" },
 ]
-description = "Single chip image encoder models with pretrained weights from HuggingFace"
+description = "Single chip image encoder and pose decoder with pretrained weights from HuggingFace"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -19,4 +19,4 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://www.siliconperception.com"
-Issues = "https://github.com/siliconperception/models"
+Issues = "https://github.com/siliconperception/devices"
