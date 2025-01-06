@@ -11,6 +11,7 @@
 - PyTorch model for training
 - Verilog code for Quartus compilation, uses bfloat18 weights
 - Quartus .ip files, dummy top.v, top.sdc
-- functional verification TBD
+- Verilog code for functional simulation, uses FP32 weights
+- Verilog testbench to verify that the Verilog matches PyTorch
 - pretraining TBD
 - evaluation TBD
