@@ -40,7 +40,7 @@ initial begin
     end
 end
 
-// input image
+// input data
 reg signed [512*DTYPE-1:0] input_data [0:ROI*ROI-1];
 integer chan,row,col,frame;
 
@@ -92,7 +92,7 @@ initial begin
     $display("Loaded bias");
     
     $readmemh("./memh/input.memh", input_data);
-    $display("Loaded input image");
+    $display("Loaded input data");
     
     $readmemh("./memh/activation1.memh", activation1);
     $readmemh("./memh/activation2.memh", activation2);

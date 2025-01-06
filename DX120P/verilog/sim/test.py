@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchinfo
-import cv2
 import siliconperception ; print('siliconperception',siliconperception.__version__)
 from siliconperception.DX120P import DX120P,DX120P_HW
 
