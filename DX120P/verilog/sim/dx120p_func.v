@@ -642,7 +642,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4611):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -1038,7 +1038,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4531):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -1422,7 +1422,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4531):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -1806,7 +1806,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(9062):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -2171,7 +2171,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(18486):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -2530,7 +2530,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(18486):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -2889,7 +2889,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(36971):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -3237,7 +3237,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(37027):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -3591,7 +3591,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(37027):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -3945,7 +3945,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(7)+1:0] ocol;
 reg signed [$clog2(7)+1:0] orow;
-reg [$clog2(74054):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -4290,7 +4290,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(5)+1:0] ocol;
 reg signed [$clog2(5)+1:0] orow;
-reg [$clog2(148134):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -4644,7 +4644,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(3)+1:0] ocol;
 reg signed [$clog2(3)+1:0] orow;
-reg [$clog2(111094):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -4998,7 +4998,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(1)+1:0] ocol;
 reg signed [$clog2(1)+1:0] orow;
-reg [$clog2(185174):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -5352,7 +5352,7 @@ reg signed [$clog2(1)+1:0] ky;
 reg signed [$clog2(1)+1:0] kx;
 reg signed [$clog2(1)+1:0] ocol;
 reg signed [$clog2(1)+1:0] orow;
-reg [$clog2(316246):0] m_rowwait_count;
+reg [$clog2(TDMPAD):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
