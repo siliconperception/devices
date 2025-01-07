@@ -452,7 +452,7 @@ module LAYER1 (
     output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=256,OWIDTH=56;
+parameter OCMUX=2,OCHAN=256,OWIDTH=56,TDMPAD=    4611;
 
 reg [$clog2(2016):0] strip_wa [14-1:0];
 reg strip_wen [14-1:0];
@@ -642,7 +642,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4610.666666666664):0] m_rowwait_count;
+reg [$clog2(4611):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -813,7 +813,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==4610.666666666664)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -1499,7 +1499,7 @@ module LAYER2 (
     output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=256,OWIDTH=56;
+parameter OCMUX=2,OCHAN=256,OWIDTH=56,TDMPAD=    4531;
 
 reg [$clog2(140):0] strip_wa [7-1:0];
 reg strip_wen [7-1:0];
@@ -1675,7 +1675,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4530.666666666664):0] m_rowwait_count;
+reg [$clog2(4531):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -1834,7 +1834,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==4530.666666666664)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -2520,7 +2520,7 @@ module LAYER3 (
     output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=256,OWIDTH=56;
+parameter OCMUX=2,OCHAN=256,OWIDTH=56,TDMPAD=    4531;
 
 reg [$clog2(140):0] strip_wa [7-1:0];
 reg strip_wen [7-1:0];
@@ -2696,7 +2696,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(56)+1:0] ocol;
 reg signed [$clog2(56)+1:0] orow;
-reg [$clog2(4530.666666666664):0] m_rowwait_count;
+reg [$clog2(4531):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -2855,7 +2855,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==4530.666666666664)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -3541,7 +3541,7 @@ module LAYER4 (
     output reg [32*32-1:0] m_data
 );
 
-parameter OCMUX=8,OCHAN=256,OWIDTH=28;
+parameter OCMUX=8,OCHAN=256,OWIDTH=28,TDMPAD=    9061;
 
 reg [$clog2(126):0] strip_wa [7-1:0];
 reg strip_wen [7-1:0];
@@ -3717,7 +3717,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(9061.333333333328):0] m_rowwait_count;
+reg [$clog2(9062):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -3867,7 +3867,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==9061.333333333328)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -4073,7 +4073,7 @@ module LAYER5 (
     output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=256,OWIDTH=28;
+parameter OCMUX=2,OCHAN=256,OWIDTH=28,TDMPAD=   18485;
 
 reg [$clog2(896):0] strip_wa [2-1:0];
 reg strip_wen [2-1:0];
@@ -4239,7 +4239,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(18485.33333333333):0] m_rowwait_count;
+reg [$clog2(18486):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -4383,7 +4383,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==18485.33333333333)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -5069,7 +5069,7 @@ module LAYER6 (
     output reg [128*32-1:0] m_data
 );
 
-parameter OCMUX=2,OCHAN=256,OWIDTH=28;
+parameter OCMUX=2,OCHAN=256,OWIDTH=28,TDMPAD=   18485;
 
 reg [$clog2(224):0] strip_wa [2-1:0];
 reg strip_wen [2-1:0];
@@ -5235,7 +5235,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(28)+1:0] ocol;
 reg signed [$clog2(28)+1:0] orow;
-reg [$clog2(18485.33333333333):0] m_rowwait_count;
+reg [$clog2(18486):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -5379,7 +5379,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==18485.33333333333)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -6065,7 +6065,7 @@ module LAYER7 (
     output reg [32*32-1:0] m_data
 );
 
-parameter OCMUX=8,OCHAN=256,OWIDTH=14;
+parameter OCMUX=8,OCHAN=256,OWIDTH=14,TDMPAD=   36971;
 
 reg [$clog2(210):0] strip_wa [2-1:0];
 reg strip_wen [2-1:0];
@@ -6231,7 +6231,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(36970.66666666666):0] m_rowwait_count;
+reg [$clog2(36971):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -6366,7 +6366,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==36970.66666666666)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -6572,7 +6572,7 @@ module LAYER8 (
     output reg [64*32-1:0] m_data
 );
 
-parameter OCMUX=4,OCHAN=256,OWIDTH=14;
+parameter OCMUX=4,OCHAN=256,OWIDTH=14,TDMPAD=   37027;
 
 reg [$clog2(896):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -6736,7 +6736,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(37026.66666666666):0] m_rowwait_count;
+reg [$clog2(37027):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -6877,7 +6877,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==37026.66666666666)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -7243,7 +7243,7 @@ module LAYER9 (
     output reg [64*32-1:0] m_data
 );
 
-parameter OCMUX=4,OCHAN=256,OWIDTH=14;
+parameter OCMUX=4,OCHAN=256,OWIDTH=14,TDMPAD=   37027;
 
 reg [$clog2(448):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -7407,7 +7407,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(14)+1:0] ocol;
 reg signed [$clog2(14)+1:0] orow;
-reg [$clog2(37026.66666666666):0] m_rowwait_count;
+reg [$clog2(37027):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -7548,7 +7548,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==37026.66666666666)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -7914,7 +7914,7 @@ module LAYER10 (
     output reg [16*32-1:0] m_data
 );
 
-parameter OCMUX=16,OCHAN=256,OWIDTH=7;
+parameter OCMUX=16,OCHAN=256,OWIDTH=7,TDMPAD=   74053;
 
 reg [$clog2(420):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -8078,7 +8078,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(7)+1:0] ocol;
 reg signed [$clog2(7)+1:0] orow;
-reg [$clog2(74053.33333333331):0] m_rowwait_count;
+reg [$clog2(74054):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -8210,7 +8210,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==74053.33333333331)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -8336,7 +8336,7 @@ module LAYER11 (
     output reg [16*32-1:0] m_data
 );
 
-parameter OCMUX=16,OCHAN=256,OWIDTH=5;
+parameter OCMUX=16,OCHAN=256,OWIDTH=5,TDMPAD=  148133;
 
 reg [$clog2(784):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -8500,7 +8500,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(5)+1:0] ocol;
 reg signed [$clog2(5)+1:0] orow;
-reg [$clog2(148133.3333333333):0] m_rowwait_count;
+reg [$clog2(148134):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -8641,7 +8641,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==148133.3333333333)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -8767,7 +8767,7 @@ module LAYER12 (
     output reg [8*32-1:0] m_data
 );
 
-parameter OCMUX=32,OCHAN=256,OWIDTH=3;
+parameter OCMUX=32,OCHAN=256,OWIDTH=3,TDMPAD=  111093;
 
 reg [$clog2(560):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -8931,7 +8931,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(3)+1:0] ocol;
 reg signed [$clog2(3)+1:0] orow;
-reg [$clog2(111093.33333333331):0] m_rowwait_count;
+reg [$clog2(111094):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -9072,7 +9072,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==111093.33333333331)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -9158,7 +9158,7 @@ module LAYER13 (
     output reg [4*32-1:0] m_data
 );
 
-parameter OCMUX=64,OCHAN=256,OWIDTH=1;
+parameter OCMUX=64,OCHAN=256,OWIDTH=1,TDMPAD=  185173;
 
 reg [$clog2(672):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -9322,7 +9322,7 @@ reg signed [$clog2(3)+1:0] ky;
 reg signed [$clog2(3)+1:0] kx;
 reg signed [$clog2(1)+1:0] ocol;
 reg signed [$clog2(1)+1:0] orow;
-reg [$clog2(185173.3333333333):0] m_rowwait_count;
+reg [$clog2(185174):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -9463,7 +9463,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==185173.3333333333)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;
@@ -9529,7 +9529,7 @@ module LAYER14 (
     output reg [8*32-1:0] m_data
 );
 
-parameter OCMUX=64,OCHAN=512,OWIDTH=1;
+parameter OCMUX=64,OCHAN=512,OWIDTH=1,TDMPAD=  316245;
 
 reg [$clog2(960):0] strip_wa [1-1:0];
 reg strip_wen [1-1:0];
@@ -9693,7 +9693,7 @@ reg signed [$clog2(1)+1:0] ky;
 reg signed [$clog2(1)+1:0] kx;
 reg signed [$clog2(1)+1:0] ocol;
 reg signed [$clog2(1)+1:0] orow;
-reg [$clog2(316245.3333333333):0] m_rowwait_count;
+reg [$clog2(316246):0] m_rowwait_count;
 
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
@@ -9825,7 +9825,7 @@ always @(posedge m_clk) begin
            end
        end
        'd10: begin
-           if (m_rowwait_count==316245.3333333333)
+           if (m_rowwait_count==TDMPAD)
                 m_state <= 'd1;
            else
                m_rowwait_count <= m_rowwait_count+1;

@@ -141,7 +141,7 @@ initial begin
                    end
                 end
             end
-            #(ROWTIME-CLKPERIOD*ROI); // subtract transmit time
+            #(ROWTIME-CLKPERIOD*ROI*32); // subtract transmit time, including interleave
         end
     end
 end
