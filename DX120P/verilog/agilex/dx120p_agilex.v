@@ -8368,8 +8368,8 @@ always @(posedge s_clk) begin
     s_data_qq <= s_data_q;
 end
 always @ (posedge s_clk) begin
-    strip_wa[0] <= (s_row_q%7)*(5+2)*16+(s_col_q-(0*5-1))*16+s_chan_q;
-    strip_wen[0] <= s_valid_q && (s_col_q >= 0*5) && (s_col_q < (0+1)*5+2-1);
+    strip_wa[0] <= (s_row_q%7)*(5+2)*16+(s_col_q*16-0*5*16+s_chan_q);
+    strip_wen[0] <= s_valid_q && (s_col_q >= 0*5) && (s_col_q < (0+1)*5+2);
 end
 wire [16*32-1:0] strip_rd [1-1:0];
 reg [32-1:0] patch [1-1:0];
@@ -8505,7 +8505,7 @@ reg [$clog2(TDMPAD):0] m_rowwait_count;
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
 strip_zpad[0] <= 'b0;
-strip_ra[0] <= (((ky+1)+(orow*1))%7)*(5+2)*16+(kx+1)*16+ocol*1*16+(ic%16)+16;
+strip_ra[0] <= (((ky+1)+(orow*1))%7)*(5+2)*16+(kx+1)*16+ocol*1*16+(ic%16);
 weight_ra <= (ky+1)*3*256+(kx+1)*256+ic;
 end
 
@@ -8625,19 +8625,10 @@ always @(posedge m_clk) begin
             end
        end
        'd7: begin
-           if (orow==5-1) begin
-               ocol <= 'd0;
-               ochan_sel <= 'd0;
-               alu_op <= 'd0;
-               m_rowwait_count <= 0;
-               m_state<= 'd10;
-           end
-           else begin
-               m_row_ack <= 1'b1;
-               if (~m_row_req) begin
-                   m_row_ack <= 1'b0;
-                   m_state<= 'd0;
-               end
+           m_row_ack <= 1'b1;
+           if (~m_row_req) begin
+               m_row_ack <= 1'b0;
+               m_state<= 'd0;
            end
        end
        'd10: begin
@@ -8799,8 +8790,8 @@ always @(posedge s_clk) begin
     s_data_qq <= s_data_q;
 end
 always @ (posedge s_clk) begin
-    strip_wa[0] <= (s_row_q%7)*(3+2)*16+(s_col_q-(0*3-1))*16+s_chan_q;
-    strip_wen[0] <= s_valid_q && (s_col_q >= 0*3) && (s_col_q < (0+1)*3+2-1);
+    strip_wa[0] <= (s_row_q%7)*(3+2)*16+(s_col_q*16-0*3*16+s_chan_q);
+    strip_wen[0] <= s_valid_q && (s_col_q >= 0*3) && (s_col_q < (0+1)*3+2);
 end
 wire [16*32-1:0] strip_rd [1-1:0];
 reg [32-1:0] patch [1-1:0];
@@ -8936,7 +8927,7 @@ reg [$clog2(TDMPAD):0] m_rowwait_count;
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
 strip_zpad[0] <= 'b0;
-strip_ra[0] <= (((ky+1)+(orow*1))%7)*(3+2)*16+(kx+1)*16+ocol*1*16+(ic%16)+16;
+strip_ra[0] <= (((ky+1)+(orow*1))%7)*(3+2)*16+(kx+1)*16+ocol*1*16+(ic%16);
 weight_ra <= (ky+1)*3*256+(kx+1)*256+ic;
 end
 
@@ -9056,19 +9047,10 @@ always @(posedge m_clk) begin
             end
        end
        'd7: begin
-           if (orow==3-1) begin
-               ocol <= 'd0;
-               ochan_sel <= 'd0;
-               alu_op <= 'd0;
-               m_rowwait_count <= 0;
-               m_state<= 'd10;
-           end
-           else begin
-               m_row_ack <= 1'b1;
-               if (~m_row_req) begin
-                   m_row_ack <= 1'b0;
-                   m_state<= 'd0;
-               end
+           m_row_ack <= 1'b1;
+           if (~m_row_req) begin
+               m_row_ack <= 1'b0;
+               m_state<= 'd0;
            end
        end
        'd10: begin
@@ -9190,8 +9172,8 @@ always @(posedge s_clk) begin
     s_data_qq <= s_data_q;
 end
 always @ (posedge s_clk) begin
-    strip_wa[0] <= (s_row_q%7)*(1+2)*32+(s_col_q-(0*1-1))*32+s_chan_q;
-    strip_wen[0] <= s_valid_q && (s_col_q >= 0*1) && (s_col_q < (0+1)*1+2-1);
+    strip_wa[0] <= (s_row_q%7)*(1+2)*32+(s_col_q*32-0*1*32+s_chan_q);
+    strip_wen[0] <= s_valid_q && (s_col_q >= 0*1) && (s_col_q < (0+1)*1+2);
 end
 wire [8*32-1:0] strip_rd [1-1:0];
 reg [32-1:0] patch [1-1:0];
@@ -9327,7 +9309,7 @@ reg [$clog2(TDMPAD):0] m_rowwait_count;
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
 strip_zpad[0] <= 'b0;
-strip_ra[0] <= (((ky+1)+(orow*1))%7)*(1+2)*32+(kx+1)*32+ocol*1*32+(ic%32)+32;
+strip_ra[0] <= (((ky+1)+(orow*1))%7)*(1+2)*32+(kx+1)*32+ocol*1*32+(ic%32);
 weight_ra <= (ky+1)*3*256+(kx+1)*256+ic;
 end
 
@@ -9447,19 +9429,10 @@ always @(posedge m_clk) begin
             end
        end
        'd7: begin
-           if (orow==1-1) begin
-               ocol <= 'd0;
-               ochan_sel <= 'd0;
-               alu_op <= 'd0;
-               m_rowwait_count <= 0;
-               m_state<= 'd10;
-           end
-           else begin
-               m_row_ack <= 1'b1;
-               if (~m_row_req) begin
-                   m_row_ack <= 1'b0;
-                   m_state<= 'd0;
-               end
+           m_row_ack <= 1'b1;
+           if (~m_row_req) begin
+               m_row_ack <= 1'b0;
+               m_state<= 'd0;
            end
        end
        'd10: begin
@@ -9561,8 +9534,8 @@ always @(posedge s_clk) begin
     s_data_qq <= s_data_q;
 end
 always @ (posedge s_clk) begin
-    strip_wa[0] <= (s_row_q%5)*(1+2)*64+(s_col_q-(0*1-1))*64+s_chan_q;
-    strip_wen[0] <= s_valid_q && (s_col_q >= 0*1) && (s_col_q < (0+1)*1+2-1);
+    strip_wa[0] <= (s_row_q%5)*(1+2)*64+(s_col_q*64-0*1*64+s_chan_q);
+    strip_wen[0] <= s_valid_q && (s_col_q >= 0*1) && (s_col_q < (0+1)*1+2);
 end
 wire [4*32-1:0] strip_rd [1-1:0];
 reg [32-1:0] patch [1-1:0];
@@ -9698,7 +9671,7 @@ reg [$clog2(TDMPAD):0] m_rowwait_count;
 always @ (posedge m_clk) begin
 strip_zpad_q[0] <= strip_zpad[0];
 strip_zpad[0] <= 'b0;
-strip_ra[0] <= (((ky+1)+(orow*1))%5)*(1+2)*64+(kx+1)*64+ocol*1*64+(ic%64)+64;
+strip_ra[0] <= (((ky+1)+(orow*1))%5)*(1+2)*64+(kx+1)*64+ocol*1*64+(ic%64);
 weight_ra <= (ky+1)*1*256+(kx+1)*256+ic;
 end
 
