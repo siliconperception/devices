@@ -1,0 +1,2 @@
+#!/bin/bash
+python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --schedule linear --start_factor 0.1 --period 350 --opt adamw --batch 50 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base --slow 0.000152415
