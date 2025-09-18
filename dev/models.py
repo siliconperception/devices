@@ -1,23 +1,3 @@
-# Copyright (c) 2024 Silicon Perception Inc (www.siliconperception.com)
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -49,14 +29,14 @@ class CNN_ENCODER(nn.Module): # project token [C] to feature map [H,W,C]
             self.layer17  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0))
         elif 'lite' in alt:
             self.layer1  = nn.Sequential(nn.Upsample(scale_factor=3, mode='nearest'))
-            self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
+            self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer3  = nn.Sequential(nn.Upsample(scale_factor=3, mode='nearest'))
-            self.layer4  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
+            self.layer4  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer5  = nn.Sequential(nn.Upsample(scale_factor=3, mode='nearest'))
-            self.layer6  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
+            self.layer6  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer7  = nn.Sequential(nn.Upsample(scale_factor=3, mode='nearest'))
-            self.layer8  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
-            self.layer9  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0))
+            self.layer8  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
+            self.layer9  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0), nn.ReLU())
     def forward(self, x):
         if 'repl' in self.alt:
             x = self.layer1(x)
@@ -149,7 +129,7 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             self.layer9  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer10  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer11  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
-            self.layer12  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0))
+            self.layer12  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0), nn.ReLU())
         if 'batchnorm' in alt:
             self.layer1  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
@@ -187,7 +167,7 @@ class CNN_LM(nn.Module):
         self.encoder = CNN_ENCODER(n_embd, alt)
         self.decoder = CNN_DECODER(n_embd, alt)
         self.projector = CNN_PROJECTOR(n_embd, alt)
-        self.embed  = nn.Sequential(nn.Conv2d(256, n_embd, kernel_size=1, stride=1, padding=0))
+        self.embed  = nn.Sequential(nn.Conv2d(256, n_embd, kernel_size=1, stride=1, padding=0), nn.ReLU())
         self.lmhead  = nn.Sequential(nn.Conv2d(n_embd, 256, kernel_size=1, stride=1, padding=0))
 
     def forward(self, ctx, idx, targets=None): # idx and targets are both (B,T) tensor of integers
@@ -213,6 +193,7 @@ class CNN_LM(nn.Module):
             ctx = torch.zeros([1,self.n_embd,81,81])
         ctx = ctx.to(device)
 
+        #prompt = prompt.encode(encoding='ASCII', errors='ignore')
         for b in prompt:
             x[0,:,0,0] = F.one_hot(torch.tensor(b),num_classes=256).float()
             logits,nxt,_ = self.forward(ctx, x)
@@ -238,5 +219,7 @@ class CNN_LM(nn.Module):
                 ret.append(f)
             except:
                 pass
+        #print(g)
         printable_chars = "".join(char for char in g if char=='\n' or char.isprintable())
+        #print(printable_chars)
         return printable_chars, np.array(ret)

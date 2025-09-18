@@ -1,23 +1,3 @@
-# Copyright (c) 2024 Silicon Perception Inc (www.siliconperception.com)
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -31,6 +11,7 @@ from matplotlib.ticker import MultipleLocator
 from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--cmap', help='color map for visualization',default='gray')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
 parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
@@ -74,11 +55,12 @@ if args.vis:
     fig, ax = plt.subplots()
     for i,f in enumerate(mat):
         if init:
-            img = ax.matshow(f) # Create the initial matshow object
+            img = ax.matshow(f, cmap=args.cmap) # Create the initial matshow object
             init=False
         else:
             img.set_data(f) # Update the data of the existing image
 
+        #ax.set_title(f'Frame {i+1}')
         ax.set_title('{:4d} : {}'.format(i,s[i:i+30].encode("utf-8")))
         plt.draw() # Redraw the figure
         plt.pause(0.1) # Pause for a short duration
@@ -89,6 +71,7 @@ if args.vis:
                     k = not plt.waitforbuttonpress(timeout=0.1)
             else:
                 exit()
+        #print('k', k)
 
     plt.ioff() # Turn off interactive mode
     plt.show()

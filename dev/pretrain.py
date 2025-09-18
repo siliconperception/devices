@@ -1,23 +1,3 @@
-# Copyright (c) 2024 Silicon Perception Inc (www.siliconperception.com)
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -33,13 +13,17 @@ import models
 from datasets import load_dataset # HF
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--eps', help='',default=1e-08, type=float)
+parser.add_argument('--steps', help='number of gradient steps until exit',default=None, type=int)
 parser.add_argument('--amsgrad', help='',default=False, action='store_true')
-parser.add_argument('--weight_decay', help='',default=0.001, type=float)
+parser.add_argument('--weight_decay', help='',default=0.01, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='lite-base')
 parser.add_argument('--slow', help='gradient scaling for perception models',default=0.000152415, type=float) # 1/(81*81)
+#parser.add_argument('--slush', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
 parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
+#parser.add_argument('--freeze', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
 parser.add_argument('--save', help='steps between model checkpoints',default=1000, type=int)
@@ -89,6 +73,7 @@ torch.manual_seed(args.seed)
 # DATASET LOADER
 if args.dataset=='tiny':
     dataset = load_dataset('roneneldan/TinyStories', streaming=True)
+    #dataset = load_dataset("text", data_files="input.txt")
 if args.dataset=='c4':
     dataset = load_dataset("allenai/c4", "en", streaming=True)
 if args.shuffle:
@@ -135,6 +120,18 @@ model = models.CNN_LM(args.n_embd, args.alt)
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
 
+#if args.freeze:
+#    for param in model.projector.parameters():
+#        param.requires_grad = True
+#    for param in model.decoder.parameters():
+#        param.requires_grad = False
+#    for param in model.lmhead.parameters():
+#        param.requires_grad = False
+#    for param in model.encoder.parameters():
+#        param.requires_grad = False
+#    for param in model.embed.parameters():
+#        param.requires_grad = False
+
 torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
     input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
 
@@ -143,7 +140,7 @@ print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 if args.opt=='radam':
     optimizer = torch.optim.RAdam(model.parameters(), lr=args.learning_rate, decoupled_weight_decay=True)
 if args.opt=='adamw':
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
 if args.opt=='adam':
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 elif args.opt=='sgd':
@@ -191,13 +188,11 @@ try:
         logits,_,loss = model(ctx, x, y)
         loss.backward()
         larr.append(loss.item())
-
-        # Scale gradients for perception models
+        # Scale gradients for a slow modules
         with torch.no_grad():
             for param in slow:
                 if param.grad is not None:
                     param.grad *= args.slow
-
         optimizer.step()
         model.eval()
         _,nxt,_ = model(ctx, x, y) # new targets
@@ -227,11 +222,16 @@ try:
             with open(args.log, 'a') as f:
                 print(s,file=f)
         i+=1
+        if args.steps is not None and i > args.steps:
+            break
+
 except KeyboardInterrupt:
-    print('\nSTOPPING THREADS')
-    stop.set()
-    while not q.empty(): # drain
-        q.get()
-    w.join()
-    print('EXIT MAIN')
+    pass
+
+print('\nSTOPPING THREADS')
+stop.set()
+while not q.empty(): # drain
+    q.get()
+w.join()
+print('EXIT MAIN')
 
