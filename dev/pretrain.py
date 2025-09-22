@@ -43,7 +43,7 @@ parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='l
 parser.add_argument('--slow', help='gradient scaling for perception models',default=0.000152415, type=float) # 1/(81*81)
 #parser.add_argument('--slush', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
 parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
-#parser.add_argument('--freeze', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
+parser.add_argument('--freeze', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
 parser.add_argument('--save', help='steps between model checkpoints',default=1000, type=int)
@@ -140,17 +140,17 @@ model = models.CNN_LM(args.n_embd, args.alt)
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
 
-#if args.freeze:
-#    for param in model.projector.parameters():
-#        param.requires_grad = True
-#    for param in model.decoder.parameters():
-#        param.requires_grad = False
-#    for param in model.lmhead.parameters():
-#        param.requires_grad = False
-#    for param in model.encoder.parameters():
-#        param.requires_grad = False
-#    for param in model.embed.parameters():
-#        param.requires_grad = False
+if args.freeze:
+    for param in model.projector.parameters():
+        param.requires_grad = True
+    for param in model.decoder.parameters():
+        param.requires_grad = False
+    for param in model.lmhead.parameters():
+        param.requires_grad = False
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+    for param in model.embed.parameters():
+        param.requires_grad = False
 
 torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
     input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
@@ -208,11 +208,12 @@ try:
         logits,_,loss = model(ctx, x, y)
         loss.backward()
         larr.append(loss.item())
-        # Scale gradients for a slow modules
-        with torch.no_grad():
-            for param in slow:
-                if param.grad is not None:
-                    param.grad *= args.slow
+        # Scale gradients for slow modules
+        if not args.freeze:
+            with torch.no_grad():
+                for param in slow:
+                    if param.grad is not None:
+                        param.grad *= args.slow
         optimizer.step()
         model.eval()
         _,nxt,_ = model(ctx, x, y) # new targets

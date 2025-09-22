@@ -31,6 +31,7 @@ from matplotlib.ticker import MultipleLocator
 from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--delay', help='second between frames for --vis',default=0.1, type=float)
 parser.add_argument('--cmap', help='color map for visualization',default='gray')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
@@ -84,11 +85,11 @@ if args.vis:
         ax.set_title('{:4d} : {}'.format(i,s[i:i+30].encode("utf-8")))
         plt.draw() # Redraw the figure
         plt.pause(0.1) # Pause for a short duration
-        k = plt.waitforbuttonpress(timeout=0.1)
+        k = plt.waitforbuttonpress(timeout=args.delay)
         if k is not None:
             if k:
                 while k:
-                    k = not plt.waitforbuttonpress(timeout=0.1)
+                    k = not plt.waitforbuttonpress(timeout=0.01)
             else:
                 exit()
         #print('k', k)
