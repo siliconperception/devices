@@ -40,8 +40,7 @@ parser.add_argument('--weight_decay', help='',default=0.01, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='lite-base')
-parser.add_argument('--slow', help='gradient scaling for perception models',default=0.000152415, type=float) # 1/(81*81)
-#parser.add_argument('--slush', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
+parser.add_argument('--slow', help='gradient scaling for perception models',default=None, type=float) # 1/(81*81)
 parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
 parser.add_argument('--freeze', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
@@ -93,7 +92,6 @@ torch.manual_seed(args.seed)
 # DATASET LOADER
 if args.dataset=='tiny':
     dataset = load_dataset('roneneldan/TinyStories', streaming=True)
-    #dataset = load_dataset("text", data_files="input.txt")
 if args.dataset=='c4':
     dataset = load_dataset("allenai/c4", "en", streaming=True)
 if args.shuffle:
@@ -152,8 +150,11 @@ if args.freeze:
     for param in model.embed.parameters():
         param.requires_grad = False
 
-torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
+info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
     input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
+print(info)
+with open(args.log, 'a') as f:
+    print('TORCHINFO',info,file=f)
 
 m = model.to(args.device)
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
@@ -175,11 +176,12 @@ elif args.schedule=='warmup':
 
 print(args)
 
-slow = []
-slow.extend(model.encoder.parameters())
-slow.extend(model.decoder.parameters())
-slow.extend(model.embed.parameters())
-slow.extend(model.lmhead.parameters())
+if args.slow is not None:
+    slow = []
+    slow.extend(model.encoder.parameters())
+    slow.extend(model.decoder.parameters())
+    slow.extend(model.embed.parameters())
+    slow.extend(model.lmhead.parameters())
 
 larr=[]
 garr=[]
@@ -208,8 +210,9 @@ try:
         logits,_,loss = model(ctx, x, y)
         loss.backward()
         larr.append(loss.item())
+
         # Scale gradients for slow modules
-        if not args.freeze:
+        if args.slow is not None:
             with torch.no_grad():
                 for param in slow:
                     if param.grad is not None:
