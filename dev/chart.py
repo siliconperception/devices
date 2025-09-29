@@ -25,6 +25,7 @@ from matplotlib.ticker import MultipleLocator
 from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
 parser.add_argument('--verbose', default=False, action='store_true')
 args = parser.parse_args()
@@ -51,6 +52,7 @@ def parselog(fn):
 
 print('loading log file')
 arr = parselog(args.log)
+arr = arr[:,args.head:]
 print('arr',arr.shape)
 
 step=arr[1]
@@ -80,7 +82,7 @@ ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
 ax1.axhline(y=np.min(loss), color='g', linestyle=':',linewidth=1,label='min')
 ax2.plot(step, grad, '-y', linewidth=0.5,alpha=0.5)
 ax3.plot(step, std, '-r', linewidth=0.5,alpha=0.5)
-ax4.plot(step, lr, '-c', linewidth=0.5,alpha=0.5)
+ax4.plot(step, lr, '-c', linewidth=1.0,alpha=0.5)
 
 ax1.set_ylim(bottom=0)
 ax1.set_xlabel('batch')

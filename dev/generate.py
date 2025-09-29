@@ -32,7 +32,7 @@ from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--delay', help='second between frames for --vis',default=0.1, type=float)
-parser.add_argument('--cmap', help='color map for visualization',default='gray')
+parser.add_argument('--cmap', help='color map for visualization',default='viridis')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
 parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
@@ -40,6 +40,8 @@ parser.add_argument('--alt', help='CNN_LM variant',default='proj-base')
 parser.add_argument('--n', help='number of tokens to generate',default=200, type=int)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--n_embd', help='',default=384, type=int)
+parser.add_argument('--n_proj', help='',default=32, type=int)
+parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--verbose', help='',default=False, action='store_true')
 args = parser.parse_args()
@@ -49,7 +51,7 @@ if args.device is None:
 else:
     device = args.device
 
-model = models.CNN_LM(args.n_embd, args.alt)
+model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt)
 m = model.to(device)
 
 if args.load is not None:

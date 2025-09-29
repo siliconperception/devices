@@ -1,4 +1,13 @@
 #!/bin/bash
-python pretrain.py --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --beta 0.95 --batch 50 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-jumbo
+python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0 --schedule whc --warmup 100 --hold 40000 --warmdown 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+
+
+
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0005 --opt adamw --beta 0.95 --schedule warmcool --warmup_epochs 1000 --warmdown_epochs 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0005 --opt adamw --beta 0.95 --schedule linear --end_factor 0.01 --period 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001 --load checkpoint.pt.9
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --batch 20 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-jumbo --slow 0.001 --load checkpoint.pt.7
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.001 --opt adamw --batch 20 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-jumbo --slow 0.001 --steps 100000
 #python generate.py --device cpu --load checkpoint.pt --alt lite-base --vis --cmap gray
 #python chart.py --log log.2025.09.17-17.31.20

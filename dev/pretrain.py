@@ -33,10 +33,13 @@ import models
 from datasets import load_dataset # HF
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
+parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
+parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--eps', help='',default=1e-08, type=float)
 parser.add_argument('--steps', help='number of gradient steps until exit',default=None, type=int)
 parser.add_argument('--amsgrad', help='',default=False, action='store_true')
-parser.add_argument('--weight_decay', help='',default=0.01, type=float)
+parser.add_argument('--weight_decay', help='',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='lite-base')
@@ -64,6 +67,8 @@ parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--checkpoint', help='checkpoint file name',default='checkpoint.pt')
 parser.add_argument('--n_embd', help='',default=384, type=int)
+parser.add_argument('--n_proj', help='',default=32, type=int)
+parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--seed', help='random seed',default=None, type=int)
 parser.add_argument('--log', help='log file name',default=None)
 parser.add_argument('--verbose', help='',default=False, action='store_true')
@@ -133,7 +138,7 @@ q = queue.Queue(maxsize=100) # training data generator
 w = threading.Thread(target=worker, args=[stop,q,dataset,args], daemon=False)
 w.start()
 
-model = models.CNN_LM(args.n_embd, args.alt)
+model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt)
 
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
@@ -167,7 +172,12 @@ if args.opt=='adam':
 elif args.opt=='sgd':
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
 
-if args.schedule=='cosine':
+if args.schedule=='whc':
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.0001, end_factor=0.0001, total_iters=args.warmup)
+    hold = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=args.hold)
+    cool = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=args.warmdown)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, hold, cool], milestones=[args.warmup,args.hold])
+elif args.schedule=='cosine':
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.period)
 elif args.schedule=='linear':
     scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
