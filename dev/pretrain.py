@@ -39,7 +39,7 @@ parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=
 parser.add_argument('--eps', help='',default=1e-08, type=float)
 parser.add_argument('--steps', help='number of gradient steps until exit',default=None, type=int)
 parser.add_argument('--amsgrad', help='',default=False, action='store_true')
-parser.add_argument('--weight_decay', help='',default=0.0, type=float)
+parser.add_argument('--weight_decay', help='WARNING MUST BE ZERO FOR CNN ???',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='lite-base')
@@ -156,7 +156,8 @@ if args.freeze:
         param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
-    input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
+    input_data=[torch.zeros([1,args.n_embd,27,27]), torch.zeros([1,256,1,1])])
+    #input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
@@ -173,7 +174,7 @@ elif args.opt=='sgd':
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
 
 if args.schedule=='whc':
-    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.0001, end_factor=0.0001, total_iters=args.warmup)
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=args.warmup)
     hold = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=args.hold)
     cool = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=args.warmdown)
     scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, hold, cool], milestones=[args.warmup,args.hold])
@@ -195,7 +196,8 @@ if args.slow is not None:
 
 larr=[]
 garr=[]
-ctx = torch.zeros([args.batch,args.n_embd,81,81])
+#ctx = torch.zeros([args.batch,args.n_embd,81,81])
+ctx = torch.zeros([args.batch,args.n_embd,27,27])
 ctx = ctx.to(args.device)
 i=0
 try:
@@ -243,9 +245,9 @@ try:
         optimizer.zero_grad()
         ctx = nxt.detach()
     
-        if args.seqlen is not None and (i%args.seqlen)==0:
-            ctx = torch.zeros([args.batch,args.n_embd,81,81])
-            ctx = ctx.to(args.device)
+#        if args.seqlen is not None and (i%args.seqlen)==0:
+#            ctx = torch.zeros([args.batch,args.n_embd,81,81])
+#            ctx = ctx.to(args.device)
     
         scheduler.step()
         if (i%args.monitor)==0:

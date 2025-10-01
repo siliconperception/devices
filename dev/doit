@@ -1,8 +1,14 @@
 #!/bin/bash
-python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0 --schedule whc --warmup 100 --hold 40000 --warmdown 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+python pretrain.py --n_embd 768 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --batch 100 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
 
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.1 --opt sgd --schedule whc --warmup 100 --hold 4000 --warmdown 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
 
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.01 --opt sgd --schedule linear --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001 --load checkpoint.pt.11
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.1 --opt sgd --schedule linear --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001 --steps 4000
 
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.00003 --opt adamw --weight_decay 0 --schedule whc --warmup 100 --hold 400000 --warmdown 400000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
+
+#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0 --schedule whc --warmup 100 --hold 40000 --warmdown 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
 #python pretrain.py --dataset tiny --shuffle --learning_rate 0.0005 --opt adamw --beta 0.95 --schedule warmcool --warmup_epochs 1000 --warmdown_epochs 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
 #python pretrain.py --dataset tiny --shuffle --learning_rate 0.0005 --opt adamw --beta 0.95 --schedule linear --end_factor 0.01 --period 40000 --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001
 #python pretrain.py --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --batch 25 --bos 2 --monitor 10 --generate 100 --save 1000 --alt lite-base-jumbo --slow 0.001 --load checkpoint.pt.9

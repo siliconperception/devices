@@ -49,7 +49,8 @@ class CNN_ENCODER(nn.Module): # project one-hot token [V] to feature map [H,W,C]
             self.layer17  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0))
         elif 'lite' in alt:
             layers = []
-            for i in range(4):
+            #for i in range(4):
+            for i in range(3):
                 layers.append(nn.Upsample(scale_factor=3, mode='nearest'))
                 layers.append(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1))
                 layers.append(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1))
@@ -100,10 +101,10 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
             self.layer5  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
             self.layer6  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=2, padding=0))
             self.layer7  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
-            self.layer8  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
-            self.layer9  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=2, padding=0))
-            self.layer10  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
-            self.layer11  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
+            #self.layer8  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
+            #self.layer9  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=2, padding=0))
+            #self.layer10  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
+            #self.layer11  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=0))
             self.layer12  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=1, stride=1, padding=0))
     def forward(self, x):
         if 'dlite' in self.alt:
@@ -120,10 +121,10 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
             x = self.layer5(x)
             x = self.layer6(x)
             x = self.layer7(x)
-            x = self.layer8(x)
-            x = self.layer9(x)
-            x = self.layer10(x)
-            x = self.layer11(x)
+            #x = self.layer8(x)
+            #x = self.layer9(x)
+            #x = self.layer10(x)
+            #x = self.layer11(x)
             x = self.layer12(x)
         return x
 
@@ -131,7 +132,27 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
     def __init__(self, n_embd, alt):
         super().__init__()
         self.alt = alt
-        if 'jumbo' in alt:
+        if 'mini' in alt:
+            #self.layer1  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer3  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer4  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer5  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer6  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer7  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer8  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer9  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer1  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer3  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer4  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer5  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer6  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer7  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer8  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer9  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            self.layer10  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
+        elif 'jumbo' in alt:
             self.layer1  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer2  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer3  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
@@ -148,9 +169,8 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             self.layer14  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer15  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer16  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
-            self.layer17  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
-            self.layer18  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
-            #self.layer19  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer17  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
+            #self.layer18  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer19  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1))
         elif 'base' in alt:
             self.layer1  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.ReLU())
@@ -179,7 +199,18 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             self.layer11  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_embd), nn.ReLU())
             self.layer12  = nn.Sequential(nn.Conv2d(n_embd, n_embd, kernel_size=1, stride=1, padding=0))
     def forward(self, x):
-        if 'jumbo' in self.alt:
+        if 'mini' in self.alt:
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+            x = self.layer4(x)
+            x = self.layer5(x)
+            x = self.layer6(x)
+            x = self.layer7(x)
+            x = self.layer8(x)
+            x = self.layer9(x)
+            x = self.layer10(x)
+        elif 'jumbo' in self.alt:
             x = self.layer1(x)
             x = self.layer2(x)
             x = self.layer3(x)
@@ -196,8 +227,8 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             x = self.layer14(x)
             x = self.layer15(x)
             x = self.layer16(x)
-            x = self.layer17(x)
-            x = self.layer18(x)
+            #x = self.layer17(x)
+            #x = self.layer18(x)
             x = self.layer19(x)
         else:
             x = self.layer1(x)
@@ -247,7 +278,8 @@ class CNN_LM(nn.Module):
         x = torch.zeros([1,256,1,1])
         x = x.to(device)
         if ctx is None:
-            ctx = torch.zeros([1,self.n_embd,81,81])
+            #ctx = torch.zeros([1,self.n_embd,81,81])
+            ctx = torch.zeros([1,self.n_embd,27,27])
         ctx = ctx.to(device)
 
         for b in prompt:

@@ -32,7 +32,7 @@ from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--delay', help='second between frames for --vis',default=0.1, type=float)
-parser.add_argument('--cmap', help='color map for visualization',default='viridis')
+parser.add_argument('--cmap', help='color map for visualization',default='gray')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
 parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
@@ -60,7 +60,8 @@ if args.load is not None:
 if args.verbose:
     torchinfo.summary(m, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
 
-ctx = torch.zeros([1,args.n_embd,81,81])
+#ctx = torch.zeros([1,args.n_embd,81,81])
+ctx = torch.zeros([1,args.n_embd,27,27])
 ctx = ctx.to(device)
 m.eval()
 BOS = b'\xFE'*args.bos
