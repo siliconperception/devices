@@ -21,6 +21,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from huggingface_hub import PyTorchModelHubMixin
 import numpy as np
 
 class CNN_ENCODER(nn.Module): # project one-hot token [V] to feature map [H,W,C]
@@ -245,7 +246,7 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             x = self.layer12(x)
         return x
 
-class CNN_LM(nn.Module):
+class CNN_LM(nn.Module, PyTorchModelHubMixin):
     def __init__(self, n_embd=384, n_proj=32, vocab=256, alt='jumbo-lite'):
         super().__init__()
         self.alt = alt

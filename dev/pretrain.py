@@ -174,9 +174,9 @@ elif args.opt=='sgd':
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
 
 if args.schedule=='whc':
-    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=args.warmup)
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
     hold = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=args.hold)
-    cool = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=args.warmdown)
+    cool = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=args.end_factor, total_iters=args.warmdown)
     scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, hold, cool], milestones=[args.warmup,args.hold])
 elif args.schedule=='cosine':
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.period)
