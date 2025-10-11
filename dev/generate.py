@@ -40,7 +40,8 @@ parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
 parser.add_argument('--alt', help='CNN_LM variant',default='lite-base-jumbo')
 parser.add_argument('--n', help='number of tokens to generate',default=200, type=int)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
-parser.add_argument('--n_embd', help='',default=384, type=int)
+parser.add_argument('--n_hidden', help='',default=256, type=int)
+parser.add_argument('--n_embd', help='',default=256, type=int)
 parser.add_argument('--n_proj', help='',default=32, type=int)
 parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--device', help='pytorch execution device',default=None)
@@ -53,33 +54,33 @@ else:
     device = args.device
 
 if args.pretrained:
-    model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt).from_pretrained('siliconperception/CNN_LM')
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt).from_pretrained('siliconperception/CNN_LM')
 else:
-    model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt)
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt)
 
 m = model.to(device)
 
 if args.load is not None:
     m.load_state_dict(torch.load(args.load, map_location=device, weights_only=True))
 
-if args.verbose:
-    torchinfo.summary(m, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
-
-#ctx = torch.zeros([1,args.n_embd,81,81])
-ctx = torch.zeros([1,args.n_embd,27,27])
+#ctx = torch.zeros([1,args.n_hidden,81,81])
+#ctx = torch.zeros([1,args.n_hidden,27,27])
+ctx = torch.zeros([1,args.n_hidden,28,28])
 ctx = ctx.to(device)
 m.eval()
-BOS = b'\xFE'*args.bos
+#BOS = b'\xFE'*args.bos
+BOS = 50256
 
 if args.vis:
-    print('prompt', BOS+args.prompt.encode("utf-8"))
-    s, mat = m.generate(BOS+args.prompt.encode("utf-8"), args.n, ctx)
+    #print('prompt', BOS+args.prompt.encode("utf-8"))
+    #s, mat = m.generate(BOS+args.prompt.encode("utf-8"), args.n, ctx)
+    _,mat,tok = m.generate([[BOS]+m.tokenizer.encode(args.prompt)], args.n, ctx)
     print('-----------------------------------------------------------------------------------------')
     print('mat', mat.shape)
-    print('s', s)
+    print('tok', ''.join(tok))
 
     init=True
-    s = 30*' ' + s
+    s = 30*' '
     plt.ion()
     fig, ax = plt.subplots()
     for i,f in enumerate(mat):
@@ -90,7 +91,8 @@ if args.vis:
             img.set_data(f) # Update the data of the existing image
 
         #ax.set_title(f'Frame {i+1}')
-        ax.set_title('{:4d} : {}'.format(i,s[i:i+30].encode("utf-8")))
+        s += tok[i]
+        ax.set_title('{:4d} : {}'.format(i,s[-30:].encode("utf-8")))
         plt.draw() # Redraw the figure
         plt.pause(0.1) # Pause for a short duration
         k = plt.waitforbuttonpress(timeout=args.delay)

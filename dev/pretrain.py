@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import torch
+import torch ; print('torch', torch.__version__)
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
@@ -33,6 +33,7 @@ import models
 from datasets import load_dataset # HF
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
 parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
 parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=40000, type=int)
@@ -42,13 +43,13 @@ parser.add_argument('--amsgrad', help='',default=False, action='store_true')
 parser.add_argument('--weight_decay', help='WARNING MUST BE ZERO FOR CNN ???',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
-parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='lite-base')
-parser.add_argument('--slow', help='gradient scaling for perception models',default=None, type=float) # 1/(81*81)
+parser.add_argument('--slow_lr', help='',default=1.0, type=float)
+parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
+#parser.add_argument('--slow', help='gradient scaling for perception models',default=None, type=float) # 1/(81*81)
 parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
-parser.add_argument('--freeze', help='freeze embed, lmhead, decoder layers',default=False, action='store_true')
+parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
-parser.add_argument('--save', help='steps between model checkpoints',default=1000, type=int)
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
 parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
 parser.add_argument('--seqlen', help='',default=None, type=int)
@@ -65,8 +66,10 @@ parser.add_argument('--opt', help='pytorch optimizer {sgd, adamw}',default='adam
 parser.add_argument('--epochs', help='number of training epochs',default=100, type=int)
 parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
-parser.add_argument('--checkpoint', help='checkpoint file name',default='checkpoint.pt')
-parser.add_argument('--n_embd', help='',default=384, type=int)
+parser.add_argument('--checkpoint', help='steps between model checkpoints',default=1000, type=int)
+parser.add_argument('--save', help='checkpoint file name',default='checkpoint.pt')
+parser.add_argument('--n_hidden', help='',default=256, type=int)
+parser.add_argument('--n_embd', help='',default=256, type=int)
 parser.add_argument('--n_proj', help='',default=32, type=int)
 parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--seed', help='random seed',default=None, type=int)
@@ -103,26 +106,34 @@ if args.shuffle:
     dataset = dataset.shuffle(buffer_size=10000, seed=args.seed)
 dataset = iter(dataset['train'])
 
+BOS = 50256
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt)
+#print(model.tokenizer)
+#print(dir(model.tokenizer))
+print('vocab_size', model.tokenizer.vocab_size)
+#for idx in range(model.tokenizer.vocab_size):
+#    print(idx, model.tokenizer.decode(idx))
+#s,_ = model.generate(prompt=[BOS])
+#print(s)
+
 sample_example=''
 num_examples=0
-BOS = b'\xFE'*args.bos
+#BOS = b'\xFE'*args.bos
 
 def worker(stop,q,dataset,args):
     global sample_example
     global num_examples
-    e = args.batch*[b'']
+    #e = args.batch*[b'']
+    e = args.batch*[[]]
     while not stop.is_set():
         for i in range(args.batch):
             while len(e[i]) < 2:
                 example = next(dataset)
                 example = example['text']
-                example = example.encode(encoding='ASCII', errors='ignore')
-                sample_example = example[0:100]
-                if args.verbose:
-                    print(example, len(example))
-                    with open(args.log, 'a') as f:
-                        print(example, len(example), file=f)
-                e[i] += BOS+example
+                sample_example = example.encode(encoding='ASCII', errors='ignore')
+                sample_example = sample_example[0:100]
+                example = model.tokenizer.encode(example)
+                e[i] += [BOS]+example
                 num_examples +=1
         x=[]
         y=[]
@@ -134,44 +145,77 @@ def worker(stop,q,dataset,args):
 
 stop = threading.Event()
 stop.clear()
-q = queue.Queue(maxsize=100) # training data generator
+q = queue.Queue(maxsize=args.batch) # training data generator
 w = threading.Thread(target=worker, args=[stop,q,dataset,args], daemon=False)
 w.start()
 
-model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt)
 
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
 
-if args.freeze:
+if args.superfreeze:
     for param in model.projector.parameters():
         param.requires_grad = True
     for param in model.decoder.parameters():
-        param.requires_grad = False
-    for param in model.lmhead.parameters():
         param.requires_grad = False
     for param in model.encoder.parameters():
         param.requires_grad = False
     for param in model.embed.parameters():
         param.requires_grad = False
+    for param in model.lmhead.parameters():
+        param.requires_grad = False
+
+if args.freeze:
+    for param in model.projector.parameters():
+        param.requires_grad = True
+    for param in model.decoder.parameters():
+        param.requires_grad = True
+    for param in model.encoder.parameters():
+        param.requires_grad = True
+    for param in model.embed.parameters():
+        param.requires_grad = False
+    for param in model.lmhead.parameters():
+        param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
-    input_data=[torch.zeros([1,args.n_embd,27,27]), torch.zeros([1,256,1,1])])
-    #input_data=[torch.zeros([1,args.n_embd,81,81]), torch.zeros([1,256,1,1])])
+    input_data=[torch.zeros([1,args.n_hidden,28,28]), torch.zeros([1],dtype=torch.int32)])
+    #input_data=[torch.zeros([1,args.n_hidden,28,28]), torch.zeros([1,256,1,1])])
+    #input_data=[torch.zeros([1,args.n_hidden,27,27]), torch.zeros([1,256,1,1])])
+    #input_data=[torch.zeros([1,args.n_hidden,81,81]), torch.zeros([1,256,1,1])])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
 
-m = model.to(args.device)
-print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
-if args.opt=='radam':
-    optimizer = torch.optim.RAdam(model.parameters(), lr=args.learning_rate, decoupled_weight_decay=True)
+model = model.to(args.device)
+print(sum(p.numel() for p in model.parameters())/1e6, 'M parameters')
+
+#if args.slow_lr is None:
+#    slow_params = sum(p.numel() for p in model.decoder.parameters())
+#    slow_params += sum(p.numel() for p in model.lmhead.parameters())
+#    slow_params += sum(p.numel() for p in model.encoder.parameters())
+#    slow_params += sum(p.numel() for p in model.embed.parameters())
+#    args.slow_lr = slow_params/sum(p.numel() for p in model.projector.parameters())
+#    print('slow_lr', args.slow_lr)
 if args.opt=='adamw':
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
-if args.opt=='adam':
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    #optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
+    #slow_lr = args.learning_rate*args.slow_lr
+    optimizer = torch.optim.AdamW([
+        {'params': model.projector.parameters(), 'lr': args.learning_rate},
+        {'params': model.decoder.parameters(), 'lr': args.slow_lr},
+        {'params': model.encoder.parameters(), 'lr': args.slow_lr},
+        #{'params': model.lmhead.parameters(), 'lr': slow_lr},
+        #{'params': model.embed.parameters(), 'lr': slow_lr}
+        ], lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
 elif args.opt=='sgd':
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
+    #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
+    slow_lr = args.learning_rate*args.slow_lr
+    optimizer = torch.optim.SGD([
+        {'params': model.projector.parameters(), 'lr': args.learning_rate},
+        {'params': model.decoder.parameters(), 'lr': args.slow_lr},
+        {'params': model.encoder.parameters(), 'lr': args.slow_lr},
+        #{'params': model.lmhead.parameters(), 'lr': slow_lr},
+        #{'params': model.embed.parameters(), 'lr': slow_lr}
+        ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov) # defaults
 
 if args.schedule=='whc':
     warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
@@ -187,48 +231,55 @@ elif args.schedule=='warmup':
 
 print(args)
 
-if args.slow is not None:
-    slow = []
-    slow.extend(model.encoder.parameters())
-    slow.extend(model.decoder.parameters())
-    slow.extend(model.embed.parameters())
-    slow.extend(model.lmhead.parameters())
+#if args.slow is not None:
+#    slow = []
+#    slow.extend(model.encoder.parameters())
+#    slow.extend(model.decoder.parameters())
+#    slow.extend(model.embed.parameters())
+#    slow.extend(model.lmhead.parameters())
 
 larr=[]
 garr=[]
-#ctx = torch.zeros([args.batch,args.n_embd,81,81])
-ctx = torch.zeros([args.batch,args.n_embd,27,27])
+#ctx = torch.zeros([args.batch,args.n_hidden,81,81])
+#ctx = torch.zeros([args.batch,args.n_hidden,27,27])
+ctx = torch.zeros([args.batch,args.n_hidden,28,28])
 ctx = ctx.to(args.device)
 i=0
 try:
     while True:
-        if (i%args.save)==0:
-            torch.save(model.state_dict(),args.checkpoint)
+        if (i%args.checkpoint)==0:
+            torch.save(model.state_dict(),args.save)
         if (i%args.generate)==0:
             model.eval()
-            s,_ = model.generate(BOS+args.prompt.encode("utf-8"), 200)
+            #s,_ = model.generate(BOS+args.prompt.encode("utf-8"), 200)
+            s,_,_ = model.generate([[BOS]], 50)
             print('\n', s, '\n')
             with open(args.log, 'a') as f:
                 print('\n', s, '\n', file=f)
 
         # predict next token, next context given current token, current context
         (x0,y0)=q.get()
-        x = torch.zeros([args.batch,256,1,1])
-        y = torch.zeros([args.batch,1,1], dtype=int)
-        x[:,:,0,0] = F.one_hot(torch.tensor(x0),num_classes=256).float()
-        y[:,0,0] = torch.tensor(y0)
-        x, y = x.to(args.device), y.to(args.device)
+        #x = torch.zeros([args.batch,256,1,1])
+        #x = torch.zeros([args.batch,1,1], dtype=int)
+        #y = torch.zeros([args.batch,1,1], dtype=int)
+        #x[:,:,0,0] = F.one_hot(torch.tensor(x0),num_classes=256).float()
+        #x[:,0,0] = torch.tensor(x0)
+        #y[:,0,0] = torch.tensor(y0)
+        x = torch.tensor(x0).to(args.device)
+        y = torch.tensor(y0).to(args.device)
+        #print('x',x.shape, 'y',y.shape)
+        #x, y = x.to(args.device), y.to(args.device)
         model.train()
         logits,_,loss = model(ctx, x, y)
         loss.backward()
         larr.append(loss.item())
 
         # Scale gradients for slow modules
-        if args.slow is not None:
-            with torch.no_grad():
-                for param in slow:
-                    if param.grad is not None:
-                        param.grad *= args.slow
+#        if args.slow is not None:
+#            with torch.no_grad():
+#                for param in slow:
+#                    if param.grad is not None:
+#                        param.grad *= args.slow
         optimizer.step()
         model.eval()
         _,nxt,_ = model(ctx, x, y) # new targets
@@ -246,7 +297,7 @@ try:
         ctx = nxt.detach()
     
 #        if args.seqlen is not None and (i%args.seqlen)==0:
-#            ctx = torch.zeros([args.batch,args.n_embd,81,81])
+#            ctx = torch.zeros([args.batch,args.n_hidden,81,81])
 #            ctx = ctx.to(args.device)
     
         scheduler.step()
