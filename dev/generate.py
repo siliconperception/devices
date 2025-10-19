@@ -31,6 +31,7 @@ from matplotlib.ticker import MultipleLocator
 from matplotlib.ticker import FuncFormatter
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--context', help='size of context feature map',default=28, type=int)
 parser.add_argument('--pretrained', help='load pretrained model from HF',default=False, action='store_true')
 parser.add_argument('--delay', help='second between frames for --vis',default=0.1, type=float)
 parser.add_argument('--cmap', help='color map for visualization',default='viridis')
@@ -54,9 +55,9 @@ else:
     device = args.device
 
 if args.pretrained:
-    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt).from_pretrained('siliconperception/CNN_LM')
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.context, args.vocab, args.alt).from_pretrained('siliconperception/CNN_LM')
 else:
-    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt)
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.context, args.vocab, args.alt)
 
 m = model.to(device)
 
@@ -65,7 +66,7 @@ if args.load is not None:
 
 #ctx = torch.zeros([1,args.n_hidden,81,81])
 #ctx = torch.zeros([1,args.n_hidden,27,27])
-ctx = torch.zeros([1,args.n_hidden,28,28])
+ctx = torch.zeros([1,args.n_hidden,args.context,args.context])
 ctx = ctx.to(device)
 m.eval()
 #BOS = b'\xFE'*args.bos
@@ -74,7 +75,8 @@ BOS = 50256
 if args.vis:
     #print('prompt', BOS+args.prompt.encode("utf-8"))
     #s, mat = m.generate(BOS+args.prompt.encode("utf-8"), args.n, ctx)
-    _,mat,tok = m.generate([[BOS]+m.tokenizer.encode(args.prompt)], args.n, ctx)
+    #_,mat,tok = m.generate([[BOS]+m.tokenizer.encode(args.prompt)], args.n, ctx)
+    _,mat,tok = m.generate(args.prompt, args.n, ctx)
     print('-----------------------------------------------------------------------------------------')
     print('mat', mat.shape)
     print('tok', ''.join(tok))
@@ -108,6 +110,6 @@ if args.vis:
     plt.show()
     exit()
 
-s,_ = m.generate(BOS+args.prompt.encode("utf-8"), args.n, ctx)
-print('-----------------------------------------------------------------------------------------')
-print(s)
+#s,_ = m.generate(BOS+args.prompt.encode("utf-8"), args.n, ctx)
+#print('-----------------------------------------------------------------------------------------')
+#print(s)

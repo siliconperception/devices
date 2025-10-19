@@ -8,7 +8,7 @@ import os
 import models
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--alt', help='CNN_LM variant',default='lite-base-jumbo')
+parser.add_argument('--alt', help='CNN_LM variant',default='resnet-jumbo')
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--n_embd', help='',default=384, type=int)
 parser.add_argument('--n_proj', help='',default=32, type=int)

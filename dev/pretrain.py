@@ -33,6 +33,8 @@ import models
 from datasets import load_dataset # HF
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--context', help='size of context feature map',default=28, type=int)
+parser.add_argument('--slow_acc', help='slow model gradient accumulation',default=1, type=int)
 parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
 parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
 parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
@@ -43,34 +45,31 @@ parser.add_argument('--amsgrad', help='',default=False, action='store_true')
 parser.add_argument('--weight_decay', help='WARNING MUST BE ZERO FOR CNN ???',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
-parser.add_argument('--slow_lr', help='',default=1.0, type=float)
+#parser.add_argument('--slow_lr', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
-#parser.add_argument('--slow', help='gradient scaling for perception models',default=None, type=float) # 1/(81*81)
 parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
 parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='')
-parser.add_argument('--bos', help='number of BOS steps',default=2, type=int)
-parser.add_argument('--seqlen', help='',default=None, type=int)
 parser.add_argument('--generate', help='sample model interval',default=100, type=int)
 parser.add_argument('--monitor', help='number of gradient updates before logging',default=10, type=int)
 parser.add_argument('--schedule', help='learning rate schedule',default='linear')
 parser.add_argument('--start_factor', help='',default=1.0, type=float)
 parser.add_argument('--end_factor', help='',default=1.0, type=float)
 parser.add_argument('--period', help='learning rate parameter',default=1000, type=int)
-parser.add_argument('--gamma', help='learning rate parameter',default=0.9, type=float)
+#parser.add_argument('--gamma', help='learning rate parameter',default=0.9, type=float)
 parser.add_argument('--shuffle', help='',default=False, action='store_true')
 parser.add_argument('--dataset', help='tiny, c4',default='c4')
 parser.add_argument('--opt', help='pytorch optimizer {sgd, adamw}',default='adamw')
-parser.add_argument('--epochs', help='number of training epochs',default=100, type=int)
+#parser.add_argument('--epochs', help='number of training epochs',default=100, type=int)
 parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--checkpoint', help='steps between model checkpoints',default=1000, type=int)
 parser.add_argument('--save', help='checkpoint file name',default='checkpoint.pt')
-parser.add_argument('--n_hidden', help='',default=256, type=int)
+parser.add_argument('--n_hidden', help='',default=192, type=int)
 parser.add_argument('--n_embd', help='',default=256, type=int)
-parser.add_argument('--n_proj', help='',default=32, type=int)
+parser.add_argument('--n_proj', help='',default=64, type=int)
 parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--seed', help='random seed',default=None, type=int)
 parser.add_argument('--log', help='log file name',default=None)
@@ -107,24 +106,17 @@ if args.shuffle:
 dataset = iter(dataset['train'])
 
 BOS = 50256
-model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.vocab, args.alt)
-#print(model.tokenizer)
-#print(dir(model.tokenizer))
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.context, args.vocab, args.alt)
 print('vocab_size', model.tokenizer.vocab_size)
-#for idx in range(model.tokenizer.vocab_size):
-#    print(idx, model.tokenizer.decode(idx))
-#s,_ = model.generate(prompt=[BOS])
-#print(s)
 
 sample_example=''
 num_examples=0
-#BOS = b'\xFE'*args.bos
 
 def worker(stop,q,dataset,args):
     global sample_example
     global num_examples
     #e = args.batch*[b'']
-    e = args.batch*[[]]
+    e = [[] for _ in range(args.batch)]
     while not stop.is_set():
         for i in range(args.batch):
             while len(e[i]) < 2:
@@ -148,7 +140,6 @@ stop.clear()
 q = queue.Queue(maxsize=args.batch) # training data generator
 w = threading.Thread(target=worker, args=[stop,q,dataset,args], daemon=False)
 w.start()
-
 
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
@@ -178,10 +169,7 @@ if args.freeze:
         param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
-    input_data=[torch.zeros([1,args.n_hidden,28,28]), torch.zeros([1],dtype=torch.int32)])
-    #input_data=[torch.zeros([1,args.n_hidden,28,28]), torch.zeros([1,256,1,1])])
-    #input_data=[torch.zeros([1,args.n_hidden,27,27]), torch.zeros([1,256,1,1])])
-    #input_data=[torch.zeros([1,args.n_hidden,81,81]), torch.zeros([1,256,1,1])])
+    input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
@@ -189,33 +177,24 @@ with open(args.log, 'a') as f:
 model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters())/1e6, 'M parameters')
 
-#if args.slow_lr is None:
-#    slow_params = sum(p.numel() for p in model.decoder.parameters())
-#    slow_params += sum(p.numel() for p in model.lmhead.parameters())
-#    slow_params += sum(p.numel() for p in model.encoder.parameters())
-#    slow_params += sum(p.numel() for p in model.embed.parameters())
-#    args.slow_lr = slow_params/sum(p.numel() for p in model.projector.parameters())
-#    print('slow_lr', args.slow_lr)
 if args.opt=='adamw':
-    #optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
-    #slow_lr = args.learning_rate*args.slow_lr
-    optimizer = torch.optim.AdamW([
+    opt_proj = torch.optim.AdamW([
         {'params': model.projector.parameters(), 'lr': args.learning_rate},
-        {'params': model.decoder.parameters(), 'lr': args.slow_lr},
-        {'params': model.encoder.parameters(), 'lr': args.slow_lr},
-        #{'params': model.lmhead.parameters(), 'lr': slow_lr},
-        #{'params': model.embed.parameters(), 'lr': slow_lr}
+        ], lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
+    opt_slow = torch.optim.AdamW([
+        {'params': model.decoder.parameters(), 'lr': args.learning_rate},
+        {'params': model.encoder.parameters(), 'lr': args.learning_rate},
+        {'params': model.lmhead.parameters(), 'lr': args.learning_rate}
         ], lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
 elif args.opt=='sgd':
-    #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov)
-    slow_lr = args.learning_rate*args.slow_lr
-    optimizer = torch.optim.SGD([
+    opt_proj = torch.optim.SGD([
         {'params': model.projector.parameters(), 'lr': args.learning_rate},
-        {'params': model.decoder.parameters(), 'lr': args.slow_lr},
-        {'params': model.encoder.parameters(), 'lr': args.slow_lr},
-        #{'params': model.lmhead.parameters(), 'lr': slow_lr},
-        #{'params': model.embed.parameters(), 'lr': slow_lr}
         ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov) # defaults
+    opt_slow = torch.optim.SGD([
+        {'params': model.decoder.parameters(), 'lr': args.learning_rate},
+        {'params': model.encoder.parameters(), 'lr': args.learning_rate},
+        {'params': model.lmhead.parameters(), 'lr': args.learning_rate}
+        ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov, weight_decay=args.weight_decay) # defaults
 
 if args.schedule=='whc':
     warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
@@ -225,66 +204,49 @@ if args.schedule=='whc':
 elif args.schedule=='cosine':
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.period)
 elif args.schedule=='linear':
-    scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
+    #sched_proj = torch.optim.lr_scheduler.LinearLR(opt_proj, start_factor=1, end_factor=1, total_iters=0)
+    sched_proj = torch.optim.lr_scheduler.LinearLR(opt_proj, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
+    sched_slow = torch.optim.lr_scheduler.LinearLR(opt_slow, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
 elif args.schedule=='warmup':
     scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=args.start_factor, total_iters=args.period)
 
 print(args)
 
-#if args.slow is not None:
-#    slow = []
-#    slow.extend(model.encoder.parameters())
-#    slow.extend(model.decoder.parameters())
-#    slow.extend(model.embed.parameters())
-#    slow.extend(model.lmhead.parameters())
-
 larr=[]
 garr=[]
-#ctx = torch.zeros([args.batch,args.n_hidden,81,81])
-#ctx = torch.zeros([args.batch,args.n_hidden,27,27])
-ctx = torch.zeros([args.batch,args.n_hidden,28,28])
+ctx = torch.zeros([args.batch,args.n_hidden,args.context,args.context])
 ctx = ctx.to(args.device)
 i=0
 try:
     while True:
         if (i%args.checkpoint)==0:
             torch.save(model.state_dict(),args.save)
+
+        # periodically log a sample from the model
         if (i%args.generate)==0:
             model.eval()
-            #s,_ = model.generate(BOS+args.prompt.encode("utf-8"), 200)
-            s,_,_ = model.generate([[BOS]], 50)
+            s,_,_ = model.generate(args.prompt, 50)
             print('\n', s, '\n')
             with open(args.log, 'a') as f:
                 print('\n', s, '\n', file=f)
 
-        # predict next token, next context given current token, current context
+        # predict (next token, next context) given (current token, current context)
         (x0,y0)=q.get()
-        #x = torch.zeros([args.batch,256,1,1])
-        #x = torch.zeros([args.batch,1,1], dtype=int)
-        #y = torch.zeros([args.batch,1,1], dtype=int)
-        #x[:,:,0,0] = F.one_hot(torch.tensor(x0),num_classes=256).float()
-        #x[:,0,0] = torch.tensor(x0)
-        #y[:,0,0] = torch.tensor(y0)
         x = torch.tensor(x0).to(args.device)
         y = torch.tensor(y0).to(args.device)
-        #print('x',x.shape, 'y',y.shape)
-        #x, y = x.to(args.device), y.to(args.device)
         model.train()
         logits,_,loss = model(ctx, x, y)
         loss.backward()
-        larr.append(loss.item())
-
-        # Scale gradients for slow modules
-#        if args.slow is not None:
-#            with torch.no_grad():
-#                for param in slow:
-#                    if param.grad is not None:
-#                        param.grad *= args.slow
-        optimizer.step()
+        #optimizer.step()
+        opt_proj.step()
+        if (i%args.slow_acc)==0:
+            opt_slow.step()
         model.eval()
-        _,nxt,_ = model(ctx, x, y) # new targets
+        _,nxt,_ = model(ctx, x, y) # compute context using updated model
+        ctx = nxt.detach() # state machine
     
-        # monitor gradient
+        # monitor loss and gradient
+        larr.append(loss.item())
         total_norm = 0
         parameters = [p for p in model.parameters() if p.grad is not None and p.requires_grad]
         for p in parameters:
@@ -292,22 +254,21 @@ try:
             total_norm += param_norm.item() ** 2
         total_norm = total_norm ** 0.5
         garr.append(total_norm)
-    
-        optimizer.zero_grad()
-        ctx = nxt.detach()
-    
-#        if args.seqlen is not None and (i%args.seqlen)==0:
-#            ctx = torch.zeros([args.batch,args.n_hidden,81,81])
-#            ctx = ctx.to(args.device)
-    
-        scheduler.step()
         if (i%args.monitor)==0:
-            s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:12.9f} mean {:12.6f} std {:12.6f} example {:10} {}'.format(
-                i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), scheduler.get_last_lr()[0],
+            s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {}'.format(
+                i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), sched_proj.get_last_lr()[0],
                 torch.mean(ctx).item(), torch.std(ctx).item(), num_examples, sample_example[0:100])
             print(s)
             with open(args.log, 'a') as f:
                 print(s,file=f)
+
+        # LR schedulers
+        sched_proj.step()
+        sched_slow.step()
+
+        opt_proj.zero_grad()
+        if (i%args.slow_acc)==0:
+            opt_slow.zero_grad()
         i+=1
         if args.steps is not None and i > args.steps:
             break
