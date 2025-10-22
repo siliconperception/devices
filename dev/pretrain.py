@@ -98,12 +98,9 @@ torch.manual_seed(args.seed)
 
 # DATASET LOADER
 if args.dataset=='tiny':
-    dataset = load_dataset('roneneldan/TinyStories', streaming=True)
+    hf_dataset = load_dataset('roneneldan/TinyStories', streaming=True)
 if args.dataset=='c4':
-    dataset = load_dataset("allenai/c4", "en", streaming=True)
-if args.shuffle:
-    dataset = dataset.shuffle(buffer_size=10000, seed=args.seed)
-dataset = iter(dataset['train'])
+    hf_dataset = load_dataset("allenai/c4", "en", streaming=True)
 
 BOS = 50256
 model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.context, args.vocab, args.alt)
@@ -112,7 +109,10 @@ print('vocab_size', model.tokenizer.vocab_size)
 sample_example=''
 num_examples=0
 
-def worker(stop,q,dataset,args):
+def worker(stop,q,hf_dataset,args):
+    epoch=1
+    hf_dataset = hf_dataset.shuffle(buffer_size=10000, seed=args.seed+epoch)
+    dataset = iter(hf_dataset['train'])
     global sample_example
     global num_examples
     #e = args.batch*[b'']
@@ -120,7 +120,17 @@ def worker(stop,q,dataset,args):
     while not stop.is_set():
         for i in range(args.batch):
             while len(e[i]) < 2:
-                example = next(dataset)
+                try:
+                    example = next(dataset)
+                except StopIteration:
+                    print('EPOCH', epoch)
+                    with open(args.log, 'a') as f:
+                        print('EPOCH',epoch,file=f)
+                    epoch += 1
+                    hf_dataset = hf_dataset.shuffle(buffer_size=10000, seed=args.seed+epoch)
+                    dataset = iter(hf_dataset['train'])
+                    example = next(dataset)
+
                 example = example['text']
                 sample_example = example.encode(encoding='ASCII', errors='ignore')
                 sample_example = sample_example[0:100]
@@ -138,7 +148,7 @@ def worker(stop,q,dataset,args):
 stop = threading.Event()
 stop.clear()
 q = queue.Queue(maxsize=args.batch) # training data generator
-w = threading.Thread(target=worker, args=[stop,q,dataset,args], daemon=False)
+w = threading.Thread(target=worker, args=[stop,q,hf_dataset,args], daemon=False)
 w.start()
 
 if args.load is not None:
@@ -225,7 +235,8 @@ try:
         # periodically log a sample from the model
         if (i%args.generate)==0:
             model.eval()
-            s,_,_ = model.generate(args.prompt, 50)
+            s,_,_ = model.generate(args.prompt, 200)
+            s = s.replace('\n', ' ')
             print('\n', s, '\n')
             with open(args.log, 'a') as f:
                 print('\n', s, '\n', file=f)

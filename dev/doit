@@ -1,5 +1,14 @@
 #!/bin/bash
-python pretrain.py --n_hidden 384 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --n_hidden 512 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 250 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo 
+python pretrain.py --n_hidden 512 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 25 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.7x7x512
+
+
+
+#python pretrain.py --n_hidden 384 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.1
+#python pretrain.py --n_hidden 384 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo
+
+
+
 #python pretrain.py --n_hidden 768 --n_embd 768 --dataset tiny --shuffle --learning_rate 0.01 --opt sgd --weight_decay 0.0 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --context 7
 #python pretrain.py --n_hidden 256 --n_embd 256 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --beta 0.9 --weight_decay 0.1 --batch 100 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --context 7
 #python pretrain.py --n_hidden 256 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --momentum 0.9 --weight_decay 0.0 --batch 100 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo

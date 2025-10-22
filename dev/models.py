@@ -37,7 +37,9 @@ class CNN_ENCODER(nn.Module): # project token embedding [C] to feature map [H,W,
             self.layer4  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer5  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer6  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
-            self.layer7  = nn.Sequential(nn.Conv2d(n_proj, n_hidden, kernel_size=1, stride=1, padding=0))
+            #self.layer7  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
+            #self.layer8  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
+            self.layer9  = nn.Sequential(nn.Conv2d(n_proj, n_hidden, kernel_size=1, stride=1, padding=0))
         elif 'x27' in alt:
             layers = []
             for i in range(3):
@@ -69,7 +71,9 @@ class CNN_ENCODER(nn.Module): # project token embedding [C] to feature map [H,W,
             x = self.layer4(x)
             x = self.layer5(x)
             x = self.layer6(x)
-            x = self.layer7(x)
+            #x = self.layer7(x)
+            #x = self.layer8(x)
+            x = self.layer9(x)
         elif 'x27' in self.alt:
             for layer in self.layers:
                 x = layer(x)
@@ -99,8 +103,10 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
             self.layer3  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer4  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
             self.layer5  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
-            self.layer6  = nn.Sequential(nn.Conv2d(n_proj, n_embd, kernel_size=1, stride=1, padding=0))
-            self.layer7  = nn.AvgPool2d(context)
+            #self.layer6  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
+            #self.layer7  = nn.Sequential(nn.Conv2d(n_proj, n_proj, kernel_size=3, stride=1, padding=1), nn.ReLU())
+            self.layer8  = nn.Sequential(nn.Conv2d(n_proj, n_embd, kernel_size=1, stride=1, padding=0))
+            self.layer9  = nn.AvgPool2d(context)
             #self.layer7  = nn.MaxPool2d(28)
         elif 'x27' in alt:
             self.layer1  = nn.Sequential(nn.Conv2d(n_hidden, n_proj, kernel_size=3, stride=1, padding=0))
@@ -127,8 +133,10 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
             x = self.layer3(x)
             x = self.layer4(x)
             x = self.layer5(x)
-            x = self.layer6(x)
-            x = self.layer7(x)
+            #x = self.layer6(x)
+            #x = self.layer7(x)
+            x = self.layer8(x)
+            x = self.layer9(x)
         elif 'x27' in self.alt:
             x = self.layer1(x)
             x = self.layer2(x)
@@ -154,25 +162,7 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
         super().__init__()
         self.alt = alt
         if 'mini' in alt:
-            #self.layer1  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer2  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer3  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer4  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer5  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer6  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer7  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer8  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            #self.layer9  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding='same', dilation=2), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer1  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer2  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer3  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer4  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer5  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer6  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer7  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer8  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer9  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(n_hidden), nn.ReLU())
-            self.layer10  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            pass
         elif 'jumbo' in alt:
             #self.layer1  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=5, stride=1, padding=2), nn.ReLU())
             #self.layer2  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=5, stride=1, padding=2), nn.ReLU())
@@ -216,16 +206,7 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             #self.layer19  = nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
     def forward(self, x):
         if 'mini' in self.alt:
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-            x = self.layer4(x)
-            x = self.layer5(x)
-            x = self.layer6(x)
-            x = self.layer7(x)
-            x = self.layer8(x)
-            x = self.layer9(x)
-            x = self.layer10(x)
+            pass
         elif 'jumbo' in self.alt:
             x = self.layer1(x)
             x = self.layer2(x)
@@ -254,6 +235,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         self.n_embd = n_embd
         self.n_proj = n_proj
         self.vocab = vocab
+        self.context = context
         self.projector = CNN_PROJECTOR(n_hidden, n_embd, alt)
         self.encoder = CNN_ENCODER(n_hidden, n_embd, n_proj, context, alt)
         self.decoder = CNN_DECODER(n_hidden, n_embd, n_proj, context, alt)
@@ -302,10 +284,13 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
             #ctx = torch.zeros([1,self.n_hidden,81,81])
             #ctx = torch.zeros([1,self.n_hidden,27,27])
             #ctx = torch.zeros([1,self.n_hidden,28,28])
-            ctx = torch.zeros([1,self.n_hidden,7,7])
+            ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
         ctx = ctx.to(device)
 
-        tok_prompt=[BOS]+self.tokenizer.encode(prompt)
+        tok_prompt = [BOS]
+        if len(prompt)>0:
+            tok_prompt = tok_prompt.extend(self.tokenizer.encode(prompt))
+        #tok_prompt=[BOS]+self.tokenizer.encode(prompt)
         for idx in tok_prompt:
             #x[0,:,0,0] = F.one_hot(torch.tensor(b),num_classes=256).float()
             logits,nxt,_ = self.forward(ctx, torch.tensor(idx).to(device))
