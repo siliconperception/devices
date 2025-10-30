@@ -1,60 +1,11 @@
 #!/bin/bash
-#python pretrain.py --n_hidden 512 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 250 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo 
-python pretrain.py --n_hidden 512 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 25 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.7x7x512
-
-
-
-#python pretrain.py --n_hidden 384 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.1
-#python pretrain.py --n_hidden 384 --n_embd 256 --n_proj 64 --context 7 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo
-
-
-
-#python pretrain.py --n_hidden 768 --n_embd 768 --dataset tiny --shuffle --learning_rate 0.01 --opt sgd --weight_decay 0.0 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-pool-jumbo --context 7
-#python pretrain.py --n_hidden 256 --n_embd 256 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --beta 0.9 --weight_decay 0.1 --batch 100 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --context 7
-#python pretrain.py --n_hidden 256 --dataset tiny --shuffle --learning_rate 0.001 --opt sgd --momentum 0.9 --weight_decay 0.0 --batch 100 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
-#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --beta 0.95 --weight_decay 0.01 --batch 100 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_acc 10 --start_factor 0.01 --period 10000
-
-
-#python pretrain.py --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --momentum 0.9 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_acc 10
-#python pretrain.py --n_embd 256 --n_hidden 192 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --beta 0.9 --batch 100 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.00001 --slow_acc 3
-#python pretrain.py --n_embd 256 --n_hidden 192 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.0 --beta 0.9 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.0001 --end_factor 0.01 --period 10000
-
-#python pretrain.py --n_embd 256 --n_hidden 192 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --beta 0.95 --weight_decay 0.0 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.00001 --steps 3000000
-#python pretrain.py --n_embd 256 --n_hidden 192 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --beta 0.999 --weight_decay 0.01 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --superfreeze --load checkpoint.pt.x28-jumbo
-
-#python pretrain.py --n_embd 256 --n_hidden 192 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt sgd --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --superfreeze --load checkpoint.pt.x28-jumbo
-#python pretrain.py --n_embd 256 --n_hidden 64 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0.01 --batch 100 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.000001
-#python pretrain.py --n_embd 256 --n_hidden 64 --n_proj 64 --dataset tiny --shuffle --learning_rate 0.0001 --start_factor 0.01 --period 1000 --opt sgd --batch 500 --monitor 10 --generate 200 --alt x28-jumbo --superfreeze --load checkpoint.pt.x28-jumbo
-
-#python pretrain.py --n_embd 256 --n_hidden 256 --n_proj 256 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0.01 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.000001
-#python pretrain.py --n_embd 256 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --superfreeze --load checkpoint.pt.x28-jumbo
-
-
-
-#python pretrain.py --n_embd 256 --dataset tiny --shuffle --learning_rate 0.0001 --schedule linear --end_factor 0.1 --period 10000 --opt adamw --weight_decay 0.01 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.00001
-#python pretrain.py --n_embd 256 --dataset tiny --shuffle --learning_rate 0.001 --schedule linear --end_factor 0.01 --period 50000 --opt adamw --beta 0.999 --weight_decay 0.01 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --slow_lr 0.000001
-
-#python pretrain.py --n_embd 256 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --beta 0.95 --weight_decay 0.0 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --freeze --load checkpoint.pt.21
-#python pretrain.py --n_embd 256 --dataset tiny --shuffle --learning_rate 0.001 --opt adamw --beta 0.95 --weight_decay 0.1 --batch 50 --monitor 100 --generate 1000 --alt x28-jumbo --slow_lr 0.001
-
-
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --batch 50 --bos 2 --monitor 100 --generate 1000 --alt free-jumbo --n_proj 384 --slow_lr 0.01
-
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.01 --opt sgd --batch 3 --bos 2 --monitor 100 --generate 1000 --alt resnet-jumbo --load checkpoint.pt.20 --freeze
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.000001 --opt adamw --batch 50 --bos 2 --monitor 10 --generate 500 --alt resnet-jumbo --load checkpoint.pt.20 --freeze
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --momentum 0.99 --batch 10 --bos 2 --monitor 50 --generate 500 --alt resnet-jumbo --load checkpoint.pt.20 --freeze
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0 --beta 0.95 --batch 100 --bos 2 --monitor 10 --generate 200 --alt resnet-jumbo --load checkpoint.pt.17
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.1 --schedule linear --end_factor 0.01 --period 1000 --opt sgd --momentum 0.99 --nesterov --batch 100 --bos 2 --monitor 10 --generate 200 --alt resnet-jumbo
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.001 --schedule linear --end_factor 0.01 --period 10000 --opt adamw --batch 250 --bos 2 --monitor 10 --generate 100 --alt resnet-jumbo
-
 
 # STEP 1 : initialize with adamw
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --beta 0.9 --weight_decay 0 --batch 250 --bos 2 --monitor 10 --generate 100 --alt resnet-jumbo --slow 0.001 --steps 100000 --save checkpoint.pt.step1
+python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
 
-# STEP 2 : train context map only using sgd
-#python pretrain.py --n_embd 384 --dataset tiny --shuffle --learning_rate 0.00001 --opt sgd --batch 250 --bos 2 --monitor 10 --generate 100 --alt resnet-jumbo --load checkpoint.pt.16 --slow 0.001
+# STEP 2 : fine tune using sgd
+python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt
 
 
-
-#python generate.py --vis --pretrained
-#python chart.py --head 10 --log log/log.2025.10.02-11.09.32
+python generate.py --vis --pretrained
+python chart.py --head 10 --log log/log.2025.10.27-14.25.03

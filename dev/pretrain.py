@@ -34,20 +34,19 @@ from datasets import load_dataset # HF
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--context', help='size of context feature map',default=28, type=int)
-parser.add_argument('--slow_acc', help='slow model gradient accumulation',default=1, type=int)
 parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
 parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
 parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=40000, type=int)
-parser.add_argument('--eps', help='',default=1e-08, type=float)
+parser.add_argument('--eps', help='',default=1e-07, type=float)
 parser.add_argument('--steps', help='number of gradient steps until exit',default=None, type=int)
 parser.add_argument('--amsgrad', help='',default=False, action='store_true')
 parser.add_argument('--weight_decay', help='WARNING MUST BE ZERO FOR CNN ???',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
-#parser.add_argument('--slow_lr', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
-parser.add_argument('--beta', help='second adamw moment coefficient',default=0.999, type=float)
+parser.add_argument('--beta1', help='second adamw moment coefficient',default=0.9, type=float)
+parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.999, type=float)
 parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
@@ -58,18 +57,17 @@ parser.add_argument('--schedule', help='learning rate schedule',default='linear'
 parser.add_argument('--start_factor', help='',default=1.0, type=float)
 parser.add_argument('--end_factor', help='',default=1.0, type=float)
 parser.add_argument('--period', help='learning rate parameter',default=1000, type=int)
-#parser.add_argument('--gamma', help='learning rate parameter',default=0.9, type=float)
 parser.add_argument('--shuffle', help='',default=False, action='store_true')
 parser.add_argument('--dataset', help='tiny, c4',default='c4')
 parser.add_argument('--opt', help='pytorch optimizer {sgd, adamw}',default='adamw')
-#parser.add_argument('--epochs', help='number of training epochs',default=100, type=int)
 parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--checkpoint', help='steps between model checkpoints',default=1000, type=int)
 parser.add_argument('--save', help='checkpoint file name',default='checkpoint.pt')
-parser.add_argument('--n_hidden', help='',default=192, type=int)
+parser.add_argument('--n_hidden', help='',default=256, type=int)
 parser.add_argument('--n_embd', help='',default=256, type=int)
-parser.add_argument('--n_proj', help='',default=64, type=int)
+parser.add_argument('--n_enc', help='',default=256, type=int)
+parser.add_argument('--n_dec', help='',default=64, type=int)
 parser.add_argument('--vocab', help='',default=256, type=int)
 parser.add_argument('--seed', help='random seed',default=None, type=int)
 parser.add_argument('--log', help='log file name',default=None)
@@ -102,8 +100,7 @@ if args.dataset=='tiny':
 if args.dataset=='c4':
     hf_dataset = load_dataset("allenai/c4", "en", streaming=True)
 
-BOS = 50256
-model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_proj, args.context, args.vocab, args.alt)
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
 print('vocab_size', model.tokenizer.vocab_size)
 
 sample_example=''
@@ -134,8 +131,8 @@ def worker(stop,q,hf_dataset,args):
                 example = example['text']
                 sample_example = example.encode(encoding='ASCII', errors='ignore')
                 sample_example = sample_example[0:100]
-                example = model.tokenizer.encode(example)
-                e[i] += [BOS]+example
+                example = model.tokenizer.encode(example+'<|endoftext|>', add_special_tokens=True)
+                e[i].extend(example)
                 num_examples +=1
         x=[]
         y=[]
@@ -179,7 +176,7 @@ if args.freeze:
         param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
-    input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
+    input_data=[torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
@@ -188,43 +185,26 @@ model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters())/1e6, 'M parameters')
 
 if args.opt=='adamw':
-    opt_proj = torch.optim.AdamW([
+    optimizer = torch.optim.AdamW([
         {'params': model.projector.parameters(), 'lr': args.learning_rate},
-        ], lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
-    opt_slow = torch.optim.AdamW([
-        {'params': model.decoder.parameters(), 'lr': args.learning_rate},
-        {'params': model.encoder.parameters(), 'lr': args.learning_rate},
-        {'params': model.lmhead.parameters(), 'lr': args.learning_rate}
-        ], lr=args.learning_rate, betas=(0.9,args.beta), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
+        {'params': model.decoder.parameters(), 'lr': args.learning_rate}
+        ], lr=args.learning_rate, betas=(args.beta1,args.beta2), weight_decay=args.weight_decay, amsgrad=args.amsgrad, eps=args.eps)
 elif args.opt=='sgd':
-    opt_proj = torch.optim.SGD([
+    optimizer = torch.optim.SGD([
         {'params': model.projector.parameters(), 'lr': args.learning_rate},
+        {'params': model.decoder.parameters(), 'lr': args.learning_rate}
         ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov) # defaults
-    opt_slow = torch.optim.SGD([
-        {'params': model.decoder.parameters(), 'lr': args.learning_rate},
-        {'params': model.encoder.parameters(), 'lr': args.learning_rate},
-        {'params': model.lmhead.parameters(), 'lr': args.learning_rate}
-        ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov, weight_decay=args.weight_decay) # defaults
 
-if args.schedule=='whc':
-    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
-    hold = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=args.hold)
-    cool = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=args.end_factor, total_iters=args.warmdown)
-    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, hold, cool], milestones=[args.warmup,args.hold])
-elif args.schedule=='cosine':
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.period)
-elif args.schedule=='linear':
-    #sched_proj = torch.optim.lr_scheduler.LinearLR(opt_proj, start_factor=1, end_factor=1, total_iters=0)
-    sched_proj = torch.optim.lr_scheduler.LinearLR(opt_proj, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
-    sched_slow = torch.optim.lr_scheduler.LinearLR(opt_slow, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
+if args.schedule=='linear':
+    scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
 elif args.schedule=='warmup':
-    scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=args.start_factor, total_iters=args.period)
+    scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.1, total_iters=args.period)
 
 print(args)
 
 larr=[]
 garr=[]
-ctx = torch.zeros([args.batch,args.n_hidden,args.context,args.context])
+ctx = torch.zeros([args.batch,args.n_enc+args.n_hidden,args.context,args.context])
 ctx = ctx.to(args.device)
 i=0
 try:
@@ -248,10 +228,7 @@ try:
         model.train()
         logits,_,loss = model(ctx, x, y)
         loss.backward()
-        #optimizer.step()
-        opt_proj.step()
-        if (i%args.slow_acc)==0:
-            opt_slow.step()
+        optimizer.step()
         model.eval()
         _,nxt,_ = model(ctx, x, y) # compute context using updated model
         ctx = nxt.detach() # state machine
@@ -267,19 +244,16 @@ try:
         garr.append(total_norm)
         if (i%args.monitor)==0:
             s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {}'.format(
-                i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), sched_proj.get_last_lr()[0],
+                i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), scheduler.get_last_lr()[0],
                 torch.mean(ctx).item(), torch.std(ctx).item(), num_examples, sample_example[0:100])
             print(s)
             with open(args.log, 'a') as f:
                 print(s,file=f)
 
         # LR schedulers
-        sched_proj.step()
-        sched_slow.step()
+        scheduler.step()
 
-        opt_proj.zero_grad()
-        if (i%args.slow_acc)==0:
-            opt_slow.zero_grad()
+        optimizer.zero_grad()
         i+=1
         if args.steps is not None and i > args.steps:
             break

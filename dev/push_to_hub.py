@@ -8,12 +8,14 @@ import os
 import models
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--alt', help='CNN_LM variant',default='resnet-jumbo')
+parser.add_argument('--context', help='size of context feature map',default=14, type=int)
+parser.add_argument('--n_hidden', help='',default=256, type=int)
+parser.add_argument('--n_embd', help='',default=256, type=int)
+parser.add_argument('--n_enc', help='',default=256, type=int)
+parser.add_argument('--n_dec', help='',default=64, type=int)
+parser.add_argument('--vocab', help='',default=-1, type=int)
+parser.add_argument('--alt', help='CNN_LM variant',default='repl-tree-jumbo')
 parser.add_argument('--load', help='load pytorch state dict',default=None)
-parser.add_argument('--n_embd', help='',default=384, type=int)
-parser.add_argument('--n_proj', help='',default=32, type=int)
-parser.add_argument('--vocab', help='',default=256, type=int)
-#parser.add_argument('--device', help='pytorch execution device',default=None)
 parser.add_argument('--device', help='pytorch execution device',default='cpu')
 parser.add_argument('--push', help='',default=False, action='store_true')
 parser.add_argument('--verbose', help='',default=False, action='store_true')
@@ -24,7 +26,7 @@ if args.device is None:
 else:
     device = args.device
 
-model = models.CNN_LM(args.n_embd, args.n_proj, args.vocab, args.alt)
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
 m = model.to(device)
 
 if args.load is not None:
