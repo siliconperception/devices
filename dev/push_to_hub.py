@@ -11,10 +11,10 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--context', help='size of context feature map',default=14, type=int)
 parser.add_argument('--n_hidden', help='',default=256, type=int)
 parser.add_argument('--n_embd', help='',default=256, type=int)
-parser.add_argument('--n_enc', help='',default=256, type=int)
-parser.add_argument('--n_dec', help='',default=64, type=int)
-parser.add_argument('--vocab', help='',default=-1, type=int)
-parser.add_argument('--alt', help='CNN_LM variant',default='repl-tree-jumbo')
+parser.add_argument('--n_enc', help='',default=-1, type=int)
+parser.add_argument('--n_dec', help='',default=-1, type=int)
+parser.add_argument('--vocab', help='',default=256, type=int)
+parser.add_argument('--alt', help='CNN_LM variant',default='repl-pool-res-char')
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--device', help='pytorch execution device',default='cpu')
 parser.add_argument('--push', help='',default=False, action='store_true')
@@ -33,7 +33,7 @@ if args.load is not None:
     m.load_state_dict(torch.load(args.load, map_location=device, weights_only=True))
 
 if args.verbose:
-    torchinfo.summary(m, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1,args.n_embd,27,27]), torch.zeros([1,args.vocab,1,1])])
+    torchinfo.summary(m, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
 
 if args.push:
     m.save_pretrained('CNN_LM')
