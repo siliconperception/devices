@@ -36,7 +36,7 @@ parser.add_argument('--pretrained', help='load pretrained model from HF',default
 parser.add_argument('--delay', help='second between frames for --vis',default=0.1, type=float)
 parser.add_argument('--cmap', help='color map for visualization',default='viridis')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
-parser.add_argument('--prompt', help='for periodic model generation during training',default='')
+parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
 parser.add_argument('--alt', help='CNN_LM variant',default='lite-base-jumbo')
 parser.add_argument('--n', help='number of tokens to generate',default=200, type=int)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
@@ -64,13 +64,17 @@ m = model.to(device)
 if args.load is not None:
     m.load_state_dict(torch.load(args.load, map_location=device, weights_only=True))
 
-ctx = torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context])
+#ctx = torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context])
+ctx = torch.zeros([1,args.n_hidden,args.context,args.context])
 ctx = ctx.to(device)
 m.eval()
-_,mat,tok = m.generate(args.prompt, args.n, ctx)
+tok,mat = m.generate(args.prompt, args.n, ctx)
+s = ''.join(tok)
+#s = s.encode('utf-8')
 print('-----------------------------------------------------------------------------------------')
-print('mat', mat.shape)
-print('tok', ''.join(tok))
+print('mat:', mat.shape)
+print('p:',args.prompt.encode('utf-8'))
+print('s:', s)
 
 if args.vis:
     init=True
@@ -88,7 +92,7 @@ if args.vis:
         s += tok[i]
         ax1.set_title('{:4d} : {}'.format(i,s[-30:].encode("utf-8")))
         plt.draw() # Redraw the figure
-        plt.pause(0.2) # Pause for a short duration
+        plt.pause(0.1) # Pause for a short duration
         k = plt.waitforbuttonpress(timeout=args.delay)
         if k is not None:
             if k:

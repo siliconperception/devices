@@ -1,11 +1,60 @@
 #!/bin/bash
 
 # STEP 1 : initialize with adamw
-python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+
+python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
+#python pretrain.py --n_embd 256 --context 32 --n_hidden 64 --dataset dolma --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
+#python pretrain.py --n_embd 256 --context 32 --n_hidden 96 --dataset c4 --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
+#python pretrain.py --n_embd 256 --context 64 --n_hidden 16 --dataset c4 --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 50 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char
+#python pretrain.py --n_embd 256 --context 16 --n_hidden 192 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
+#python pretrain.py --n_embd 256 --context 32 --n_hidden 64 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char
+#python pretrain.py --n_embd 256 --context 16 --n_hidden 192 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char
+
+#python pretrain.py --n_embd 256 --context 16 --n_hidden 192 --dataset c4 --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char --load checkpoint.pt
+#python pretrain.py --n_embd 256 --context 16 --n_hidden 192 --dataset dolma --learning_rate 0.0001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char checkpoint.pt.29
+#python pretrain.py --n_embd 256 --context 16 --n_hidden 192 --dataset dolma --learning_rate 0.001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-jumbo-char
+#python pretrain.py --n_embd 256 --context 8 --n_hidden 384 --dataset dolma --learning_rate 0.0001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo-char
+#python pretrain.py --n_embd 768 --context 8 --n_hidden 256 --dataset dolma --learning_rate 0.01 --schedule cyclic --start_factor 0.0001 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --n_embd 768 --context 8 --n_hidden 256 --dataset dolma --learning_rate 0.00001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt
+#python pretrain.py --n_embd 768 --context 8 --n_hidden 256 --dataset dolma --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.9 --batch 1000 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.27
+#python pretrain.py --context 12 --n_hidden 384 --dataset dolma --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --context 12 --n_hidden 384 --dataset tiny --learning_rate 0.00001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.24
+#python pretrain.py --context 12 --n_hidden 384 --dataset tiny --learning_rate 0.0001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.24
+#python pretrain.py --context 8 --n_hidden 384 --dataset dolma --learning_rate 0.001 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 500 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.23
+#python pretrain.py --context 8 --n_hidden 384 --dataset dolma --learning_rate 0.001 --opt sgd --weight_decay 0.01 --momentum 0.99 --nesterov --batch 500 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.23
+#python pretrain.py --context 8 --n_hidden 384 --dataset c4 --learning_rate 0.001 --start_factor 0.01 --period 10000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 500 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.23
+#python pretrain.py --context 8 --n_hidden 384 --dataset c4 --learning_rate 0.001 --opt sgd --weight_decay 0.01 --momentum 0.99 --nesterov --batch 500 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --context 28 --n_hidden 384 --dataset c4 --learning_rate 0.001 --opt sgd --weight_decay 0.01 --momentum 0.99 --nesterov --batch 50 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.21
+#python pretrain.py --context 28 --n_hidden 384 --dataset c4 --learning_rate 0.00001 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 50 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+
+#python pretrain.py --context 14 --n_hidden 384 --dataset c4 --learning_rate 0.01 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo --load checkpoint.pt.18
+#python pretrain.py --context 14 --n_hidden 384 --dataset c4 --learning_rate 0.00001 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+
+#python pretrain.py --context 32 --n_hidden 512 --dataset c4 --learning_rate 0.05 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 50 --monitor 100 --generate 1000 --freeze --alt repl-pool-fixed
+#python pretrain.py --context 8 --n_hidden 512 --dataset c4 --learning_rate 0.001 --opt sgd --weight_decay 0.01 --momentum 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --context 8 --n_hidden 256 --dataset tiny --learning_rate 0.0005 --weight_decay 0.1 --beta2 0.9 --opt adamw --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-pool-jumbo
+#python pretrain.py --context 32 --n_hidden 128 --dataset tiny --shuffle --learning_rate 0.001 --weight_decay 0.01 --beta2 0.9 --opt adamw --batch 200 --monitor 50 --generate 500 --freeze --alt repl-pool-jumbo
+#python pretrain.py --context 16 --n_hidden 256 --dataset tiny --shuffle --learning_rate 0.001 --weight_decay 0.01 --momentum 0.95 --opt sgd --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --context 16 --n_hidden 256 --dataset c4 --shuffle --learning_rate 0.0001 --weight_decay 0.0 --momentum 0.0 --opt rms --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt.c4
+#python pretrain.py --context 16 --n_hidden 256 --dataset c4 --shuffle --learning_rate 0.001 --weight_decay 0.0 --momentum 0.0 --opt sgd --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset textbook --shuffle --learning_rate 0.01 --start_factor 0.001 --period 10000 --weight_decay 0.0 --momentum 0.0 --opt sgd --batch 1000 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt.11
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset tiny --shuffle --learning_rate 0.001 --weight_decay 0.01 --momentum 0.9 --opt sgd --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt.lr01
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset tiny --shuffle --learning_rate 0.01 --start_factor 0.01 --period 10000 --weight_decay 0.01 --opt sgd --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 16 --dataset c4 --shuffle --learning_rate 0.0001 --weight_decay 0.0 --opt rms --batch 100 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset c4 --shuffle --learning_rate 0.0001 --weight_decay 0.0 --opt rms --batch 1000 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset c4 --shuffle --schedule cyclic --learning_rate 0.03 --start_factor 0.334 --period 10000 --opt sgd --batch 1000 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset c4 --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 500 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo --load checkpoint.pt.9
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 8 --dataset tiny --shuffle --schedule cyclic --learning_rate 0.1 --start_factor 0.01 --period 100000 --opt sgd --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 192 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 64 --n_enc 256 --n_dec 64 --context 64 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 128 --n_enc 256 --n_dec 64 --context 32 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 32 --dataset tiny --shuffle --learning_rate 0.0001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 32 --dataset tiny --shuffle --learning_rate 0.00001 --opt adamw --weight_decay 0.1 --beta2 0.9 --batch 200 --monitor 100 --generate 1000 --freeze --alt repl-tree-jumbo --load checkpoint.pt.6
 
 # STEP 2 : fine tune using sgd
-python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt
+#python pretrain.py --n_hidden 256 --n_enc 256 --n_dec 64 --context 14 --dataset tiny --shuffle --learning_rate 0.0001 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 2000 --freeze --alt repl-tree-jumbo --load checkpoint.pt
 
 
-python generate.py --vis --pretrained
-python chart.py --head 10 --log log/log.2025.10.27-14.25.03
+#python generate.py --vis --pretrained
+#python chart.py --head 10 --log log/log.2025.10.27-14.25.03

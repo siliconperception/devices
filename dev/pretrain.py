@@ -31,17 +31,21 @@ import subprocess
 import datetime
 import models
 from datasets import load_dataset # HF
+import random
+import string
+import ftfy
+import re
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--context', help='size of context feature map',default=28, type=int)
+parser.add_argument('--context', help='size of context feature map',default=8, type=int)
 parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
 parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
 parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=40000, type=int)
-parser.add_argument('--eps', help='',default=1e-07, type=float)
+parser.add_argument('--eps', help='',default=1e-08, type=float)
 parser.add_argument('--steps', help='number of gradient steps until exit',default=None, type=int)
 parser.add_argument('--amsgrad', help='',default=False, action='store_true')
-parser.add_argument('--weight_decay', help='WARNING MUST BE ZERO FOR CNN ???',default=0.0, type=float)
+parser.add_argument('--weight_decay', help='',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
@@ -50,7 +54,7 @@ parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.
 parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
-parser.add_argument('--prompt', help='for periodic model generation during training',default='')
+parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
 parser.add_argument('--generate', help='sample model interval',default=100, type=int)
 parser.add_argument('--monitor', help='number of gradient updates before logging',default=10, type=int)
 parser.add_argument('--schedule', help='learning rate schedule',default='linear')
@@ -96,42 +100,71 @@ torch.manual_seed(args.seed)
 
 # DATASET LOADER
 if args.dataset=='tiny':
-    hf_dataset = load_dataset('roneneldan/TinyStories', streaming=True)
-if args.dataset=='c4':
-    hf_dataset = load_dataset("allenai/c4", "en", streaming=True)
+    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=True)]
+    hf_columns = ['text']
+    hf_ratios = [1.0]
+elif args.dataset=='dolma':
+    #hf_datasets = [load_dataset("allenai/dolma3_mix-6T-1025", streaming=True)]
+    #hf_datasets = [load_dataset("allenai/dolma3_dolmino_mix-100B-1025", streaming=True)]
+    hf_datasets = [load_dataset("allenai/dolma3_mix-5.5T-1125", streaming=True)]
+    hf_columns = ['text']
+    hf_ratios = [1.0]
+elif args.dataset=='c4':
+    hf_datasets = [load_dataset("allenai/c4", "en", streaming=True)]
+    hf_columns = ['text']
+    hf_ratios = [1.0]
+elif args.dataset=='codelion':
+    finepdfs = load_dataset("codelion/finepdfs-1B", streaming=True)
+    dclm = load_dataset("codelion/dclm-baseline-1B", streaming=True)
+    fineweb_edu = load_dataset("codelion/fineweb-edu-1B", streaming=True)
+    hf_datasets = [finepdfs, dclm, fineweb_edu]
+    hf_columns = ['text','text','text']
+    hf_ratios = [0.5, 0.3, 0.2]
+elif args.dataset=='mix':
+    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=True), load_dataset("allenai/c4", "en", streaming=True)]
+    hf_columns = ['text','text']
+    hf_ratios = [0.1, 0.9]
 
 model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
 print('vocab_size', model.tokenizer.vocab_size)
-
 sample_example=''
 num_examples=0
 
-def worker(stop,q,hf_dataset,args):
+def worker(stop,q,hf_datasets,hf_columns,hf_ratios,args):
     epoch=1
-    hf_dataset = hf_dataset.shuffle(buffer_size=10000, seed=args.seed+epoch)
-    dataset = iter(hf_dataset['train'])
+
+    for idx in range(len(hf_datasets)):
+        hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
+    #for d in hf_datasets:
+    #    d = d.shuffle(buffer_size=10000, seed=args.seed+epoch)
+    iters = [iter(ds['train']) for ds in hf_datasets]
     global sample_example
     global num_examples
-    #e = args.batch*[b'']
     e = [[] for _ in range(args.batch)]
     while not stop.is_set():
         for i in range(args.batch):
             while len(e[i]) < 2:
+                idx = random.choices(range(len(hf_datasets)), weights=hf_ratios, k=1)[0]
                 try:
-                    example = next(dataset)
+                    example = next(iters[idx])
                 except StopIteration:
-                    print('EPOCH', epoch)
+                    print('EPOCH', epoch, 'idx', idx)
                     with open(args.log, 'a') as f:
-                        print('EPOCH',epoch,file=f)
+                        print('EPOCH',epoch,'idx',idx,file=f)
                     epoch += 1
-                    hf_dataset = hf_dataset.shuffle(buffer_size=10000, seed=args.seed+epoch)
-                    dataset = iter(hf_dataset['train'])
-                    example = next(dataset)
+                    hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
+                    iters[idx] = iter(hf_datasets[idx]['train'])
+                    example = next(iters[idx])
 
-                example = example['text']
-                sample_example = example.encode(encoding='ASCII', errors='ignore')
-                sample_example = sample_example[0:100]
-                example = model.tokenizer.encode(example+'<|endoftext|>', add_special_tokens=True)
+                example = example[hf_columns[idx]]
+                #example = example.replace("\\'", "'")
+                sample_example = 'idx {}:'.format(idx) + str(example)
+                sample_example = "".join(char for char in sample_example if char.isprintable() or char=='\n' or char=='\t' or char=='\r')
+                sample_example = sample_example.replace('\n', '\\n')
+                sample_example = sample_example.replace('\t', '\\t')
+                sample_example = sample_example.replace('\r', '\\r')
+                example = '\x02' + example + '\x03'
+                example = model.tokenizer.encode(example, add_special_tokens=True)
                 e[i].extend(example)
                 num_examples +=1
         x=[]
@@ -145,7 +178,7 @@ def worker(stop,q,hf_dataset,args):
 stop = threading.Event()
 stop.clear()
 q = queue.Queue(maxsize=args.batch) # training data generator
-w = threading.Thread(target=worker, args=[stop,q,hf_dataset,args], daemon=False)
+w = threading.Thread(target=worker, args=[stop,q,hf_datasets,hf_columns,hf_ratios,args], daemon=False)
 w.start()
 
 if args.load is not None:
@@ -176,7 +209,8 @@ if args.freeze:
         param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
-    input_data=[torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
+    #input_data=[torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
+    input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
@@ -194,17 +228,25 @@ elif args.opt=='sgd':
         {'params': model.projector.parameters(), 'lr': args.learning_rate},
         {'params': model.decoder.parameters(), 'lr': args.learning_rate}
         ], lr=args.learning_rate, momentum=args.momentum, nesterov=args.nesterov) # defaults
+elif args.opt=='rms':
+    optimizer = torch.optim.RMSprop([
+        {'params': model.projector.parameters(), 'lr': args.learning_rate},
+        {'params': model.decoder.parameters(), 'lr': args.learning_rate}
+        ], lr=args.learning_rate, weight_decay=args.weight_decay, momentum=args.momentum)
 
 if args.schedule=='linear':
     scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
 elif args.schedule=='warmup':
-    scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.1, total_iters=args.period)
+    scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.01, total_iters=args.period)
+elif args.schedule=='cyclic':
+    scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, args.learning_rate*args.start_factor, args.learning_rate, step_size_up=args.period, step_size_down=None, mode='triangular', gamma=1.0, scale_fn=None, scale_mode='cycle', cycle_momentum=True, base_momentum=0.0, max_momentum=0.0, last_epoch=-1)
 
 print(args)
 
 larr=[]
 garr=[]
-ctx = torch.zeros([args.batch,args.n_enc+args.n_hidden,args.context,args.context])
+#ctx = torch.zeros([args.batch,args.n_enc+args.n_hidden,args.context,args.context])
+ctx = torch.zeros([args.batch,args.n_hidden,args.context,args.context])
 ctx = ctx.to(args.device)
 i=0
 try:
@@ -215,8 +257,16 @@ try:
         # periodically log a sample from the model
         if (i%args.generate)==0:
             model.eval()
-            s,_,_ = model.generate(args.prompt, 200)
-            s = s.replace('\n', ' ')
+            tok,_ = model.generate(args.prompt, 1000 if 'char' in args.alt else 200)
+            #s = ''.join(tok)
+            #s = ''.join(char for char in tok if char=='\n' or char in string.printable)
+            #s = ''.join(char if char=='\n' or char in string.printable else 'X' for char in tok)
+            #s = ''.join(tok).encode('utf-8')
+            s = ''.join(tok)
+            s = "".join(char for char in s if char.isprintable() or char=='\n' or char=='\t' or char=='\r')
+            s = s.replace('\n', '\\n')
+            s = s.replace('\t', '\\t')
+            s = s.replace('\r', '\\r')
             print('\n', s, '\n')
             with open(args.log, 'a') as f:
                 print('\n', s, '\n', file=f)
@@ -243,9 +293,9 @@ try:
         total_norm = total_norm ** 0.5
         garr.append(total_norm)
         if (i%args.monitor)==0:
-            s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {}'.format(
+            s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {:.110}'.format(
                 i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), scheduler.get_last_lr()[0],
-                torch.mean(ctx).item(), torch.std(ctx).item(), num_examples, sample_example[0:100])
+                torch.mean(ctx).item(), torch.std(ctx).item(), num_examples, sample_example)
             print(s)
             with open(args.log, 'a') as f:
                 print(s,file=f)

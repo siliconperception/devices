@@ -24,6 +24,7 @@ from torch.nn import functional as F
 from huggingface_hub import PyTorchModelHubMixin
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import numpy as np
+import re
 #BOS = 50256
 
 class CNN_ENCODER(nn.Module): # project token embedding [C] to feature map [H,W,C]
@@ -32,6 +33,9 @@ class CNN_ENCODER(nn.Module): # project token embedding [C] to feature map [H,W,
         self.alt = alt
         if 'repl' in alt:
             layers = []
+            #if n_hidden != n_embd:
+            if True:
+                layers.append(nn.Conv2d(n_embd, n_hidden, kernel_size=1, stride=1, padding=0))
             layers.append(nn.Upsample(scale_factor=context, mode='nearest'))
             self.layers = nn.ModuleList(layers)
     def forward(self, x):
@@ -46,7 +50,8 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
         self.alt = alt
         if 'tree' in alt:
             layers = []
-            layers.append(nn.Conv2d(n_enc+n_hidden, n_dec, kernel_size=3, stride=1, padding=1))
+            #layers.append(nn.Conv2d(n_enc+n_hidden, n_dec, kernel_size=3, stride=1, padding=1))
+            layers.append(nn.Conv2d(n_hidden, n_dec, kernel_size=3, stride=1, padding=1))
             layers.append(nn.ReLU())
             d = np.ceil(np.log2(context)).astype(int)
             #print('d',d)
@@ -57,12 +62,9 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
             self.layers = nn.ModuleList(layers)
         elif 'pool' in alt:
             layers = []
-            layers.append(nn.Conv2d(n_enc+n_hidden, n_dec, kernel_size=3, stride=1, padding=1))
-            layers.append(nn.ReLU())
-            for i in range(context-2-1):
-                layers.append(nn.Conv2d(n_dec, n_dec, kernel_size=3, stride=1, padding=1))
-                layers.append(nn.ReLU())
-            layers.append(nn.Conv2d(n_dec, n_embd, kernel_size=1, stride=1, padding=0))
+            #if n_hidden != n_embd:
+            if True:
+                layers.append(nn.Conv2d(n_hidden, n_embd, kernel_size=1, stride=1, padding=0))
             layers.append(nn.AvgPool2d(context))
             #layers.append(nn.MaxPool2d(context))
             self.layers = nn.ModuleList(layers)
@@ -79,24 +81,187 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
     def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt):
         super().__init__()
         self.alt = alt
-        if 'mini' in alt:
-            pass
+        if 'dilate' in alt:
+            layers = []
+            #if 'char' in alt:
+            #    layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #else:
+            #    layers.append(nn.Conv2d(n_embd+n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #layers.append(nn.ReLU())
+            for i in range(context//8):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=1, padding=1))
+                layers.append(nn.ReLU())
+            for i in range(context//4):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=2, padding=2))
+                layers.append(nn.ReLU())
+            for i in range(context//2):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=4, padding=4))
+                layers.append(nn.ReLU())
+            for i in range(context//4):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=2, padding=2))
+                layers.append(nn.ReLU())
+            for i in range(context//8):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=1, padding=1))
+                layers.append(nn.ReLU())
+            #layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=2, padding=2))
+            #layers.append(nn.ReLU())
+            #layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, dilation=1, padding=1))
+            #layers.append(nn.ReLU())
+            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
+            self.layers = nn.ModuleList(layers)
+        elif 'res' in alt:
+            layers = []
+            #if 'char' in alt:
+            #    layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #else:
+            #    layers.append(nn.Conv2d(n_embd+n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #layers.append(nn.ReLU())
+            #for i in range(context//2):
+            #for i in range(context):
+            #for i in range(int(context/np.sqrt(2))-1):
+            #for i in range(int(context*np.sqrt(2))):
+            #self.first = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
+            #for i in range(context):
+            #for i in range(4*context):
+            #for i in range(2*context):
+            for i in range(int(context*np.sqrt(2))):
+                layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
+                #layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+                #layers.append(nn.ReLU())
+            self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
+            #layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
+            self.layers = nn.ModuleList(layers)
         elif 'jumbo' in alt:
             layers = []
-            layers.append(nn.Conv2d(n_enc+n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
-            layers.append(nn.ReLU())
-            for i in range(context//2):
+            #if 'char' in alt:
+            #    layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #else:
+            #    layers.append(nn.Conv2d(n_embd+n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #layers.append(nn.ReLU())
+            #for i in range(context//2):
+            #for i in range(context):
+            #for i in range(int(context/np.sqrt(2))-1):
+            #for i in range(int(context*np.sqrt(2))):
+            cdim = 4*context
+            #cdim = int(np.sqrt(2)*context)-1
+            for i in range(cdim):
                 layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
                 layers.append(nn.ReLU())
-            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0))
+            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
+            self.layers = nn.ModuleList(layers)
+        elif 'fixed' in alt:
+            layers = []
+            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            layers.append(nn.ReLU())
+            for i in range(4):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+                layers.append(nn.ReLU())
+            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
             self.layers = nn.ModuleList(layers)
     def forward(self, x):
-        if 'mini' in self.alt:
-            pass
+        if 'res' in self.alt:
+            #x = self.first(x)
+            for layer in self.layers:
+                x = 0.5*x + layer(x)
+            x = self.last(x)
+        elif 'dilate' in self.alt:
+            for layer in self.layers:
+                x = layer(x)
         elif 'jumbo' in self.alt:
             for layer in self.layers:
                 x = layer(x)
+        elif 'fixed' in self.alt:
+            for layer in self.layers:
+                x = layer(x)
         return x
+
+class ByteLevelTokenizer:
+    """
+    A minimal byte-level tokenizer with only encode() and decode() methods.
+    It directly maps input characters to their byte values (0-255) and vice versa.
+    """
+    def __init__(self):
+        # The vocabulary size is fixed to 256 (all possible byte values)
+        self.vocab_size = 256
+        # We don't need explicit stoi/itos dictionaries as we use built-in methods
+
+    def encode(self, text: str, add_special_tokens=None) -> list[int]:
+        """
+        Encodes a string into a list of integer byte values (0-255).
+
+        This assumes standard UTF-8 encoding.
+        """
+        # The .encode('utf-8') method returns a 'bytes' object,
+        # which acts as an immutable sequence of integers (0-255).
+        return list(text.encode('utf-8'))
+
+    def decode(self, tokens: list[int]) -> str:
+        """
+        Decodes a list of integer byte values (0-255) back into a string.
+        """
+        ## Convert the list of integers back into a 'bytes' object,
+        ## then decode those bytes into a string.
+        #print('tokens', tokens.shape, tokens)
+        #byte_array = [bytes(t) for t in tokens]
+        #print('byte_array', byte_array)
+        #byte_array = b''.join(byte_array)
+        #print('byte_array', byte_array)
+        #byte_array = byte_array.decode('utf-8')
+        #print('byte_array', byte_array)
+        #exit()
+        return str(chr(tokens[0]))
+        #return bytes(tokens[0])
+
+class CharacterOneHotEmbedding(nn.Module):
+    """
+    A PyTorch Module that functions as a character-level one-hot functional
+    "embedding" layer.
+
+    It converts input tokens (integers in the range 0..255) into one-hot
+    vectors of length 256. This is a drop-in replacement for nn.Embedding
+    where you require one-hot encoding instead of learned embeddings.
+    """
+    def __init__(self, num_embeddings=256, embedding_dim=256):
+        """
+        Initializes the layer.
+
+        Args are kept consistent with nn.Embedding signature for drop-in
+        compatibility, but num_embeddings and embedding_dim are fixed at 256
+        for ASCII character support.
+        """
+        super(CharacterOneHotEmbedding, self).__init__()
+        if num_embeddings != 256 or embedding_dim != 256:
+            raise ValueError(
+                "For character one-hot encoding, both num_embeddings and "
+                f"embedding_dim must be 256. Got {num_embeddings}, {embedding_dim}."
+            )
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Processes the input tensor (batch_size, seq_len) into
+        one-hot vectors (batch_size, seq_len, 256).
+
+        Args:
+            input_tensor: A LongTensor of shape (*, seq_len)
+                          containing integer indices (0-255).
+
+        Returns:
+            A FloatTensor of shape (*, seq_len, 256) with one-hot vectors.
+        """
+        # Ensure the input indices are within the valid range
+        if input_tensor.max() >= self.num_embeddings or input_tensor.min() < 0:
+             raise IndexError("Character indices are out of the 0-255 range.")
+
+        # Use F.one_hot to perform the encoding
+        # The input tensor must be of type Long/Int
+        #print('input_tensor', input_tensor, type(input_tensor), dir(input_tensor))
+        one_hot = F.one_hot(input_tensor.long(), num_classes=self.num_embeddings)
+
+        # Convert the resulting tensor from Long (default for one_hot) to Float
+        # so it can be used in subsequent neural network layers (e.g., Linear, Conv)
+        return one_hot.float()
 
 class CNN_LM(nn.Module, PyTorchModelHubMixin):
     def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt):
@@ -115,58 +280,152 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         if n_embd==768:
             self.tok_model = AutoModelForCausalLM.from_pretrained('roneneldan/TinyStories-33M')
             self.tokenizer = AutoTokenizer.from_pretrained('EleutherAI/gpt-neo-125M')
+            self.embed = self.tok_model.transformer.wte         # 50257->256
+            self.lmhead = self.tok_model.lm_head    # 256->50257
+        elif n_embd==256 and 'char' in alt:
+            self.tokenizer = ByteLevelTokenizer()
+            self.embed  = CharacterOneHotEmbedding()
+            self.lmhead  = nn.Identity()
         elif n_embd==256:
             self.tok_model = AutoModelForCausalLM.from_pretrained('roneneldan/TinyStories-8M')
             self.tokenizer = AutoTokenizer.from_pretrained('roneneldan/TinyStories-8M')
-        self.embed = self.tok_model.transformer.wte         # 50257->256
-        self.lmhead = self.tok_model.lm_head    # 256->50257
+            self.embed = self.tok_model.transformer.wte         # 50257->256
+            self.lmhead = self.tok_model.lm_head    # 256->50257
 
     def forward(self, ctx, idx, targets=None): # idx and targets are both (B,T) tensor of integers
+        #tok = self.embed(idx)
+        #tok = tok.unsqueeze(-1)
+        #tok = tok.unsqueeze(-1)
+        #enc = self.encoder(tok)
+        #proj = self.projector(ctx)
+        #res = torch.cat((enc, proj), dim=1)
+        #dec = self.decoder(res)
+        #dec = torch.squeeze(dec, dim=(-2, -1))
+
         tok = self.embed(idx)
         tok = tok.unsqueeze(-1)
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
-        proj = self.projector(ctx)
-        res = torch.cat((enc, proj), dim=1)
-        dec = self.decoder(res)
+        
+        #res = torch.cat((enc, ctx), dim=1)
+        res = torch.add(enc, ctx)
+
+        proj = self.projector(res)
+        dec = self.decoder(proj)
         dec = torch.squeeze(dec, dim=(-2, -1))
+
         logits = self.lmhead(dec)
         if targets is None:
             loss = None
         else:
             loss = F.cross_entropy(logits, targets)
-        return logits,res,loss
+        #return logits,res,loss
+        return logits,proj,loss
 
-    def generate(self, prompt='', ntokens=20, ctx=None):
-        ret=[]
+    def sanitize_for_terminal(self, s: str) -> str:
+        """
+        Removes non-printable control characters (C0 and C1 sets)
+        that might cause issues in a terminal, but keeps regular
+        printable characters, including UTF-8 emojis.
+        """
+
+        # Define the ranges for C0 and C1 control codes
+        # C0: 0x00 to 0x1F (includes NUL, BEL, BS, ESC, etc.)
+        # C1: 0x80 to 0x9F (less common, but good practice to remove)
+
+        control_chars = (
+            chr(i) for i in range(0x00, 0x20)
+        )
+        # Note: Newline (\n), carriage return (\r), and tab (\t)
+        # are often desired in terminal output, so they are explicitly
+        # excluded from the removal set if you want to keep formatting.
+        # To remove them, simply include them in the control_chars list.
+
+        # Example to exclude \n, \r, \t:
+        chars_to_remove = set(control_chars) - {'\n', '\r', '\t'}
+
+        # Build a translation table mapping unwanted characters to None (which removes them)
+        # This approach is generally better than using string.printable as string.printable
+        # only includes ASCII characters and would filter out all emojis and non-ASCII text.
+        trans_table = {ord(c): None for c in chars_to_remove}
+
+        # For a more comprehensive removal of *all* characters not considered "printable"
+        # by the unicode standard, you could use a slightly different approach, but
+        # the above targets the specific characters known to disrupt terminals.
+
+        # Use translate to remove the characters
+        return s.translate(trans_table)
+
+# --- Example Usage ---
+# String with control characters (like null byte \x00, escape \x1b, bell \x07)
+# and a UTF-8 emoji
+#malicious_string = "Hello\x00 World\x1b[31m! \a Look, an emoji: 😊"
+# \x1b[31m is an ANSI color code, often treated as control sequence
+
+# Sanitize the string
+#clean_string = sanitize_for_terminal(malicious_string)
+
+#print(f"Original: {repr(malicious_string)}")
+#print(f"Cleaned:  {repr(clean_string)}")
+
+# If you also want to specifically handle ANSI escape codes, which are a common
+# cause of terminal issues, a dedicated library might be better, or a regex:
+    def remove_ansi_escape(self, s):
+        # Regex for common ANSI escape codes
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', s)
+
+#clean_string_ansi = remove_ansi_escape(clean_string)
+#print(f"Cleaned (no ANSI): {repr(clean_string_ansi)}")
+
+    def generate(self, prompt='\x02', ntokens=20, ctx=None):
+        vis=[]
         tok=[]
         self.eval()
         device = next(self.parameters()).device
         if ctx is None:
-            ctx = torch.zeros([1,self.n_enc+self.n_hidden,self.context,self.context])
+            ##ctx = torch.zeros([1,self.n_enc+self.n_hidden,self.context,self.context])
+            #ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
+            ctx = torch.normal(torch.zeros([1,self.n_hidden,self.context,self.context]), torch.ones([1,self.n_hidden,self.context,self.context]))
         ctx = ctx.to(device)
 
-        tok_prompt = self.tokenizer.encode('<|endoftext|>'+prompt)
-        for idx in tok_prompt:
-            logits,nxt,_ = self.forward(ctx, torch.tensor([idx]).to(device))
-            ctx = nxt.detach()
+        #tok_prompt = self.tokenizer.encode('<|endoftext|>'+prompt, add_special_tokens=True)
+        tok_prompt = self.tokenizer.encode(prompt, add_special_tokens=True)
+        #print('len(tok_prompt)', len(tok_prompt))
+        if len(tok_prompt) > 0:
+            for idx in tok_prompt:
+                logits,nxt,_ = self.forward(ctx, torch.tensor([idx]).to(device))
+                ctx = nxt.detach()
+        else:
+            print('ERROR: zero length prompt')
 
-        g=''
+        #g=''
         for i in range(ntokens):
             probs = F.softmax(logits, dim=-1)
             if torch.isnan(probs).any() or torch.isinf(probs).any() or (probs < 0).any():
-                g+='X'
+                #g+='X'
+                tok.append('X')
                 continue
             probs = probs[0]
             idx = torch.multinomial(probs,num_samples=1)
             t = self.tokenizer.decode(idx)
-            tok.append(t)
-            g += t
+            t = self.sanitize_for_terminal(t)
+            t = self.remove_ansi_escape(t)
+            #print('idx', idx, 't', t, 'idx[0]', idx[0])
+            if idx[0].item()==2:
+                tok.append('<START>')
+            elif idx[0].item()==3:
+                tok.append('<END>')
+            else:
+                tok.append(t)
+            #g += t
             logits,nxt,_ = self.forward(ctx, idx)
             ctx = nxt.detach()
             f = ctx.cpu().numpy()
             f = np.squeeze(f)
-            ret.append(np.std(f, axis=0))
+            f = np.std(f, axis=0)
+            #f = np.var(f, axis=0)
+            vis.append(f)
         
-        printable_chars = "".join(char for char in g if char=='\n' or char.isprintable())
-        return printable_chars, np.array(ret), np.array(tok)
+        #printable_chars = "".join(char for char in g if char=='\n' or char.isprintable())
+        return tok, np.array(vis)
