@@ -2,8 +2,13 @@
 
 # STEP 1 : initialize with adamw
 
-python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.40
+python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.46
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.40
 #python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.0 --beta2 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt
+
+
+
+
 #python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.1 --beta2 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt
 #python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
 #python pretrain.py --n_embd 256 --context 32 --n_hidden 64 --dataset dolma --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char
