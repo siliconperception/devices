@@ -116,7 +116,7 @@ class ByteLevelTokenizer:
         """
         # The .encode('utf-8') method returns a 'bytes' object,
         # which acts as an immutable sequence of integers (0-255).
-        return list(text.encode('utf-8'))
+        return list(text.encode('latin-1').decode('unicode_escape').encode('utf-8'))
 
     def decode(self, tokens: list[int]) -> str:
         """
