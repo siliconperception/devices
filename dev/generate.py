@@ -37,7 +37,7 @@ parser.add_argument('--delay', help='second between frames for --vis',default=0.
 parser.add_argument('--cmap', help='color map for visualization',default='viridis')
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
-parser.add_argument('--alt', help='CNN_LM variant',default='lite-base-jumbo')
+parser.add_argument('--alt', help='CNN_LM variant',default='repl-pool-res-char')
 parser.add_argument('--n', help='number of tokens to generate',default=200, type=int)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--n_hidden', help='',default=256, type=int)
