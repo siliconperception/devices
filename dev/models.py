@@ -25,6 +25,7 @@ from huggingface_hub import PyTorchModelHubMixin
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import numpy as np
 import re
+import ast
 
 class CNN_ENCODER(nn.Module): # project token embedding [C] to feature map [H,W,C]
     def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt):
@@ -108,15 +109,19 @@ class ByteLevelTokenizer:
         self.vocab_size = 256
         # We don't need explicit stoi/itos dictionaries as we use built-in methods
 
-    def encode(self, text: str, add_special_tokens=None) -> list[int]:
+    def encode(self, text, add_special_tokens=None) -> list[int]:
         """
         Encodes a string into a list of integer byte values (0-255).
 
         This assumes standard UTF-8 encoding.
         """
-        # The .encode('utf-8') method returns a 'bytes' object,
-        # which acts as an immutable sequence of integers (0-255).
-        return list(text.encode('latin-1').decode('unicode_escape').encode('utf-8'))
+        #print('text', type(text), len(text), text)
+        if add_special_tokens==True:
+            text = ast.literal_eval("b'" + text + "'")
+        else:
+            text = text.encode('utf-8')
+        #print('text', type(text), len(text), text)
+        return list(text)
 
     def decode(self, tokens: list[int]) -> str:
         """
@@ -277,7 +282,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         return ansi_escape.sub('', s)
 
-    def generate(self, prompt='\x02', ntokens=20, ctx=None):
+    def generate(self, prompt, ntokens=20, ctx=None):
         vis=[]
         tok=[]
         self.eval()
@@ -287,6 +292,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         ctx = ctx.to(device)
 
         tok_prompt = self.tokenizer.encode(prompt, add_special_tokens=True)
+        #print('tok_prompt', tok_prompt)
         if len(tok_prompt) > 0:
             for idx in tok_prompt:
                 logits,nxt,_ = self.forward(ctx, torch.tensor([idx]).to(device))

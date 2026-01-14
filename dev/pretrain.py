@@ -164,7 +164,7 @@ def worker(stop,q,hf_datasets,hf_columns,hf_ratios,args):
                 sample_example = sample_example.replace('\t', '\\t')
                 sample_example = sample_example.replace('\r', '\\r')
                 example = '\x02' + example + '\x03'
-                example = model.tokenizer.encode(example, add_special_tokens=True)
+                example = model.tokenizer.encode(example, add_special_tokens=False)
                 e[i].extend(example)
                 num_examples +=1
         x=[]
