@@ -37,9 +37,10 @@ import ftfy
 import re
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--streaming', help='use HF streaming datasets',default=False, action='store_true')
 parser.add_argument('--context', help='size of context feature map',default=8, type=int)
-parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
-parser.add_argument('--warmup', help='LR schedule param for warmcool',default=4000, type=int)
+#parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
+parser.add_argument('--warmup', help='LR schedule param for warmcool',default=1000, type=int)
 parser.add_argument('--hold', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--warmdown', help='LR schedule param for warmcool',default=40000, type=int)
 parser.add_argument('--eps', help='',default=1e-08, type=float)
@@ -51,7 +52,7 @@ parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
 parser.add_argument('--beta1', help='second adamw moment coefficient',default=0.9, type=float)
 parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.999, type=float)
-parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
+#parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
@@ -61,7 +62,7 @@ parser.add_argument('--schedule', help='learning rate schedule',default='linear'
 parser.add_argument('--start_factor', help='',default=1.0, type=float)
 parser.add_argument('--end_factor', help='',default=1.0, type=float)
 parser.add_argument('--period', help='learning rate parameter',default=1000, type=int)
-parser.add_argument('--shuffle', help='',default=False, action='store_true')
+#parser.add_argument('--shuffle', help='',default=False, action='store_true')
 parser.add_argument('--dataset', help='tiny, c4',default='c4')
 parser.add_argument('--opt', help='pytorch optimizer {sgd, adamw}',default='adamw')
 parser.add_argument('--device', help='pytorch execution device',default=None)
@@ -100,28 +101,30 @@ torch.manual_seed(args.seed)
 
 # DATASET LOADER
 if args.dataset=='tiny':
-    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=True)]
+    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=args.streaming)]
+    hf_columns = ['text']
+    hf_ratios = [1.0]
+elif args.dataset=='web':
+    hf_datasets = [load_dataset("Skylion007/openwebtext", streaming=args.streaming)]
     hf_columns = ['text']
     hf_ratios = [1.0]
 elif args.dataset=='dolma':
-    #hf_datasets = [load_dataset("allenai/dolma3_mix-6T-1025", streaming=True)]
-    #hf_datasets = [load_dataset("allenai/dolma3_dolmino_mix-100B-1025", streaming=True)]
-    hf_datasets = [load_dataset("allenai/dolma3_mix-5.5T-1125", streaming=True)]
+    hf_datasets = [load_dataset("allenai/dolma3_mix-150B-1025", streaming=args.streaming)]
     hf_columns = ['text']
     hf_ratios = [1.0]
 elif args.dataset=='c4':
-    hf_datasets = [load_dataset("allenai/c4", "en", streaming=True)]
+    hf_datasets = [load_dataset("allenai/c4", "en", streaming=args.streaming)]
     hf_columns = ['text']
     hf_ratios = [1.0]
 elif args.dataset=='codelion':
-    finepdfs = load_dataset("codelion/finepdfs-1B", streaming=True)
-    dclm = load_dataset("codelion/dclm-baseline-1B", streaming=True)
-    fineweb_edu = load_dataset("codelion/fineweb-edu-1B", streaming=True)
+    finepdfs = load_dataset("codelion/finepdfs-1B", streaming=args.streaming)
+    dclm = load_dataset("codelion/dclm-baseline-1B", streaming=args.streaming)
+    fineweb_edu = load_dataset("codelion/fineweb-edu-1B", streaming=args.streaming)
     hf_datasets = [finepdfs, dclm, fineweb_edu]
     hf_columns = ['text','text','text']
     hf_ratios = [0.5, 0.3, 0.2]
 elif args.dataset=='mix':
-    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=True), load_dataset("allenai/c4", "en", streaming=True)]
+    hf_datasets = [load_dataset('roneneldan/TinyStories', streaming=args.streaming), load_dataset("allenai/c4", "en", streaming=args.streaming)]
     hf_columns = ['text','text']
     hf_ratios = [0.1, 0.9]
 
@@ -134,9 +137,10 @@ def worker(stop,q,hf_datasets,hf_columns,hf_ratios,args):
     epoch=1
 
     for idx in range(len(hf_datasets)):
-        hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
-    #for d in hf_datasets:
-    #    d = d.shuffle(buffer_size=10000, seed=args.seed+epoch)
+        if args.streaming:
+            hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
+        else:
+            hf_datasets[idx] = hf_datasets[idx].shuffle(seed=args.seed+epoch)
     iters = [iter(ds['train']) for ds in hf_datasets]
     global sample_example
     global num_examples
@@ -152,7 +156,10 @@ def worker(stop,q,hf_datasets,hf_columns,hf_ratios,args):
                     with open(args.log, 'a') as f:
                         print('EPOCH',epoch,'idx',idx,file=f)
                     epoch += 1
-                    hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
+                    if args.streaming:
+                        hf_datasets[idx] = hf_datasets[idx].shuffle(buffer_size=1e5, seed=args.seed+epoch)
+                    else:
+                        hf_datasets[idx] = hf_datasets[idx].shuffle(seed=args.seed+epoch)
                     iters[idx] = iter(hf_datasets[idx]['train'])
                     example = next(iters[idx])
 
@@ -184,29 +191,29 @@ w.start()
 if args.load is not None:
     model.load_state_dict(torch.load(args.load, weights_only=True))
 
-if args.superfreeze:
-    for param in model.projector.parameters():
-        param.requires_grad = True
-    for param in model.decoder.parameters():
-        param.requires_grad = False
-    for param in model.encoder.parameters():
-        param.requires_grad = False
-    for param in model.embed.parameters():
-        param.requires_grad = False
-    for param in model.lmhead.parameters():
-        param.requires_grad = False
-
-if args.freeze:
-    for param in model.projector.parameters():
-        param.requires_grad = True
-    for param in model.decoder.parameters():
-        param.requires_grad = True
-    for param in model.encoder.parameters():
-        param.requires_grad = True
-    for param in model.embed.parameters():
-        param.requires_grad = False
-    for param in model.lmhead.parameters():
-        param.requires_grad = False
+#if args.superfreeze:
+#    for param in model.projector.parameters():
+#        param.requires_grad = True
+#    for param in model.decoder.parameters():
+#        param.requires_grad = False
+#    for param in model.encoder.parameters():
+#        param.requires_grad = False
+#    for param in model.embed.parameters():
+#        param.requires_grad = False
+#    for param in model.lmhead.parameters():
+#        param.requires_grad = False
+#
+#if args.freeze:
+#    for param in model.projector.parameters():
+#        param.requires_grad = True
+#    for param in model.decoder.parameters():
+#        param.requires_grad = True
+#    for param in model.encoder.parameters():
+#        param.requires_grad = True
+#    for param in model.embed.parameters():
+#        param.requires_grad = False
+#    for param in model.lmhead.parameters():
+#        param.requires_grad = False
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
     #input_data=[torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
@@ -239,7 +246,16 @@ if args.schedule=='linear':
 elif args.schedule=='warmup':
     scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.01, total_iters=args.period)
 elif args.schedule=='cyclic':
-    scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, args.learning_rate*args.start_factor, args.learning_rate, step_size_up=args.period, step_size_down=None, mode='triangular', gamma=1.0, scale_fn=None, scale_mode='cycle', cycle_momentum=True, base_momentum=0.0, max_momentum=0.0, last_epoch=-1)
+    scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, args.learning_rate*args.start_factor, args.learning_rate, step_size_up=args.period, step_size_down=args.period, mode='triangular', gamma=1.0, scale_fn=None, scale_mode='cycle', cycle_momentum=False, base_momentum=0.0, max_momentum=0.0, last_epoch=-1)
+elif args.schedule=='decay':
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
+    decay = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=args.start_factor, total_iters=args.period)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, decay], milestones=[args.warmup])
+elif args.schedule=='piecewise':
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.warmup)
+    decay1 = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=10*args.start_factor, total_iters=args.period)
+    decay2 = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=10*args.start_factor, end_factor=args.start_factor, total_iters=args.period)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warm, decay1, decay2], milestones=[args.warmup, args.warmup+args.period])
 
 print(args)
 

@@ -21,8 +21,9 @@
 import argparse
 import numpy as np ; print('numpy ' + np.__version__)
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
-from matplotlib.ticker import FuncFormatter
+import matplotlib.ticker as ticker
+#from matplotlib.ticker import MultipleLocator
+#from matplotlib.ticker import FuncFormatter
 import re
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -91,11 +92,14 @@ ax5 = ax4.twinx()
 ax1.set_ylim(bottom=0, top=np.log(256))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
 #ax1.plot(step, loss_mean, '-w', linewidth=1,alpha=0.8)
-ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=2,label='min')
+ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
 #ax2.set_ylim(bottom=0, top=20)
 ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
+#ax3.set_ylim(bottom=0, top=20)
+#ax3b.set_ylim(bottom=-1, top=1)
 ax3.plot(step, std, '-r', linewidth=1.0,alpha=0.5)
 ax3b.plot(step, mean, '-b', linewidth=1.0,alpha=0.5)
+ax4.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.7f'))
 ax4.plot(step, lr, '-c', linewidth=2.0,alpha=0.5)
 ax5.plot(step, ex, '-m', linewidth=2.0,alpha=0.5)
 

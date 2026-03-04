@@ -80,6 +80,12 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
                 layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
             self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
             self.layers = nn.ModuleList(layers)
+        elif 'deep' in alt:
+            layers = []
+            for i in range(context*2):
+                layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
+            self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
+            self.layers = nn.ModuleList(layers)
         elif 'fixed' in alt:
             layers = []
             layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
@@ -90,7 +96,7 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
             self.layers = nn.ModuleList(layers)
     def forward(self, x):
-        if 'res' in self.alt:
+        if 'res' in self.alt or 'deep' in self.alt:
             for layer in self.layers:
                 x = 0.5*x + layer(x)
             x = self.last(x)
@@ -109,7 +115,7 @@ class ByteLevelTokenizer:
         self.vocab_size = 256
         # We don't need explicit stoi/itos dictionaries as we use built-in methods
 
-    def encode(self, text, add_special_tokens=None) -> list[int]:
+    def encode(self, text, add_special_tokens=False) -> list[int]:
         """
         Encodes a string into a list of integer byte values (0-255).
 
@@ -117,7 +123,10 @@ class ByteLevelTokenizer:
         """
         #print('text', type(text), len(text), text)
         if add_special_tokens==True:
-            text = ast.literal_eval("b'" + text + "'")
+            try:
+                text = ast.literal_eval("b'" + text + "'")
+            except:
+                text = text.encode('utf-8')
         else:
             text = text.encode('utf-8')
         #print('text', type(text), len(text), text)

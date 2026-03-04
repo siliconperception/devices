@@ -2,7 +2,28 @@
 
 # STEP 1 : initialize with adamw
 
-python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.46
+python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.66.2WEEKS
+#python pretrain.py --context 28 --n_hidden 128 --dataset dolma --streaming --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char
+
+
+#python pretrain.py --context 28 --n_hidden 128 --dataset dolma --learning_rate 0.001 --start_factor 0.01 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.64
+#python pretrain.py --context 28 --n_hidden 128 --dataset dolma --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.63
+#python pretrain.py --context 28 --n_hidden 128 --dataset dolma --learning_rate 0.0001 --schedule piecewise --warmup 20000 --start_factor 0.01 --period 500000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-res-char
+
+#python pretrain.py --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.000001 --start_factor 0.01 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.61
+#python pretrain.py --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.0001 --schedule decay --warmup 10000 --start_factor 0.01 --period 1000000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char
+
+
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.000001 --start_factor 0.001 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.59
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.00001 --start_factor 0.001 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.56
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset dolma --learning_rate 0.0001 --start_factor 0.001 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.55
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --streaming --schedule cyclic --learning_rate 0.001 --start_factor 0.001 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.99 --nesterov --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.54
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --streaming --schedule cyclic --learning_rate 0.0001 --start_factor 0.001 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.52
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.0001 --start_factor 0.01 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.50
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 1000 --opt rms --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.49
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.0002 --start_factor 0.01 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.48
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-res-char --load checkpoint.pt.47
+#python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.46
 #python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt.40
 #python pretrain.py --n_embd 256 --context 14 --n_hidden 256 --dataset c4 --learning_rate 0.000001 --start_factor 0.01 --period 10000 --opt adamw --weight_decay 0.0 --beta2 0.99 --batch 100 --monitor 100 --generate 1000 --alt repl-pool-res-char --load checkpoint.pt
 
