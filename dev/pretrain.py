@@ -55,7 +55,7 @@ parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.
 #parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
 parser.add_argument('--momentum', help='',default=0, type=float)
 parser.add_argument('--nesterov', help='',default=False, action='store_true')
-parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
+parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x03')
 parser.add_argument('--generate', help='sample model interval',default=100, type=int)
 parser.add_argument('--monitor', help='number of gradient updates before logging',default=10, type=int)
 parser.add_argument('--schedule', help='learning rate schedule',default='linear')
@@ -176,11 +176,14 @@ def worker(stop,q,hf_datasets,hf_columns,hf_ratios,args):
                 num_examples +=1
         x=[]
         y=[]
+        flag=[]
         for i in range(args.batch):
             x.append(e[i][0])
             y.append(e[i][1])
+            #print('e[{}][0]={}'.format(i, e[i][0]))
+            flag.append(e[i][0] == 0x02) # reset context at the start of each example (\x02)
             e[i] = e[i][1:]
-        q.put((x,y))
+        q.put((x,y, flag))
 
 stop = threading.Event()
 stop.clear()
@@ -288,9 +291,11 @@ try:
                 print('\n', s, '\n', file=f)
 
         # predict (next token, next context) given (current token, current context)
-        (x0,y0)=q.get()
+        (x0,y0,f0)=q.get()
+        #print('f0', sum(f0), f0)
         x = torch.tensor(x0).to(args.device)
         y = torch.tensor(y0).to(args.device)
+        ctx[f0, :, :, :] = 0 # reset context to zero at start of each example
         model.train()
         logits,_,loss = model(ctx, x, y)
         loss.backward()
