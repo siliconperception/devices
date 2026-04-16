@@ -86,6 +86,12 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
                 layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
             self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
             self.layers = nn.ModuleList(layers)
+        elif 'xtra' in alt:
+            layers = []
+            for i in range(context*4):
+                layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
+            self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
+            self.layers = nn.ModuleList(layers)
         elif 'fixed' in alt:
             layers = []
             layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
@@ -99,6 +105,13 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
         if 'res' in self.alt or 'deep' in self.alt:
             for layer in self.layers:
                 x = 0.5*x + layer(x)
+            x = self.last(x)
+        elif 'xtra' in self.alt:
+            x0 = x.clone()
+            for layer in self.layers:
+                x = x0 + layer(x)
+                #x = 0.5*x + layer(x)
+                #x = 0.5*x0 + 0.5*x + layer(x)
             x = self.last(x)
         elif 'fixed' in self.alt:
             for layer in self.layers:
@@ -201,7 +214,11 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         self.n_dec = n_dec
         self.vocab = vocab
         self.context = context
+
+        self.ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
         self.projector = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
+        if 'dbl' in self.alt:
+            self.projector2 = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
         self.encoder = CNN_ENCODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
         self.decoder = CNN_DECODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
 
@@ -220,13 +237,25 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
             self.embed = self.tok_model.transformer.wte         # 50257->256
             self.lmhead = self.tok_model.lm_head    # 256->50257
 
-    def forward(self, ctx, idx, targets=None): # idx and targets are both (B,T) tensor of integers
+    def reset(self):
+        self.ctx = 0
+        
+    def forward(self, idx, targets=None): # idx and targets are both (B,T) tensor of integers
         tok = self.embed(idx)
         tok = tok.unsqueeze(-1)
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
-        res = torch.add(enc, ctx)
-        proj = self.projector(res)
+        if 'dbl' in self.alt:
+            res1 = torch.add(self.ctx, enc)
+            proj = self.projector(res1)
+            res2 = torch.add(proj, enc)
+            proj = self.projector2(res2)
+            self.ctx = proj.clone().detach()
+        else:
+            res = torch.add(enc, self.ctx)
+            proj = self.projector(res)
+            self.ctx = proj.clone().detach()
+
         dec = self.decoder(proj)
         dec = torch.squeeze(dec, dim=(-2, -1))
         logits = self.lmhead(dec)
@@ -236,7 +265,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         else:
             loss = F.cross_entropy(logits, targets)
         
-        return logits,proj,loss
+        return logits,loss
 
     def sanitize_for_terminal(self, s: str) -> str:
         """
@@ -291,21 +320,18 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         return ansi_escape.sub('', s)
 
-    def generate(self, prompt, ntokens=20, ctx=None):
+    def generate(self, prompt, ntokens=20):
         vis=[]
         tok=[]
         self.eval()
         device = next(self.parameters()).device
-        if ctx is None:
-            ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
-        ctx = ctx.to(device)
+        self.reset()
 
         tok_prompt = self.tokenizer.encode(prompt, add_special_tokens=True)
         #print('tok_prompt', tok_prompt)
         if len(tok_prompt) > 0:
             for idx in tok_prompt:
-                logits,nxt,_ = self.forward(ctx, torch.tensor([idx]).to(device))
-                ctx = nxt.detach()
+                logits,_ = self.forward(torch.tensor([idx]).to(device))
         else:
             print('ERROR: zero length prompt')
 
@@ -326,9 +352,8 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
                 tok.append('<END>')
             else:
                 tok.append(t)
-            logits,nxt,_ = self.forward(ctx, idx)
-            ctx = nxt.detach()
-            f = ctx.cpu().numpy()
+            logits,_ = self.forward(idx)
+            f = self.ctx.cpu().numpy()
             f = np.squeeze(f)
             f = np.std(f, axis=0)
             vis.append(f)

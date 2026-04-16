@@ -37,6 +37,7 @@ import ftfy
 import re
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--clip', help='gradient clipping',default=None, type=float)
 parser.add_argument('--streaming', help='use HF streaming datasets',default=False, action='store_true')
 parser.add_argument('--context', help='size of context feature map',default=8, type=int)
 #parser.add_argument('--superfreeze', help='freeze embed, lmhead, encoder, decoder layers',default=False, action='store_true')
@@ -220,7 +221,8 @@ if args.load is not None:
 
 info = torchinfo.summary(model, col_names=["input_size","output_size","num_params"],
     #input_data=[torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
-    input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
+    #input_data=[torch.zeros([1,args.n_hidden,args.context,args.context]), torch.zeros([1],dtype=torch.int32)])
+    input_data=[torch.zeros([1],dtype=torch.int32)])
 print(info)
 with open(args.log, 'a') as f:
     print('TORCHINFO',info,file=f)
@@ -264,9 +266,6 @@ print(args)
 
 larr=[]
 garr=[]
-#ctx = torch.zeros([args.batch,args.n_enc+args.n_hidden,args.context,args.context])
-ctx = torch.zeros([args.batch,args.n_hidden,args.context,args.context])
-ctx = ctx.to(args.device)
 i=0
 try:
     while True:
@@ -295,14 +294,15 @@ try:
         #print('f0', sum(f0), f0)
         x = torch.tensor(x0).to(args.device)
         y = torch.tensor(y0).to(args.device)
-        ctx[f0, :, :, :] = 0 # reset context to zero at start of each example
+        #ctx[f0, :, :, :] = 0 # reset context to zero at start of each example
         model.train()
-        logits,_,loss = model(ctx, x, y)
+        logits,loss = model(x, y)
         loss.backward()
+        if args.clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.clip)
         optimizer.step()
         model.eval()
-        _,nxt,_ = model(ctx, x, y) # compute context using updated model
-        ctx = nxt.detach() # state machine
+        _,_ = model(x, y) # compute context using updated model
     
         # monitor loss and gradient
         larr.append(loss.item())
@@ -316,7 +316,7 @@ try:
         if (i%args.monitor)==0:
             s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {:.110}'.format(
                 i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), scheduler.get_last_lr()[0],
-                torch.mean(ctx).item(), torch.std(ctx).item(), num_examples, sample_example)
+                torch.mean(model.ctx).item(), torch.std(model.ctx).item(), num_examples, sample_example)
             print(s)
             with open(args.log, 'a') as f:
                 print(s,file=f)

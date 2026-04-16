@@ -2,7 +2,12 @@
 
 # STEP 1 : initialize with adamw
 
-python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.14
+python pretrain.py --context 56 --n_hidden 16 --dataset web --learning_rate 0.00001 --opt adamw --weight_decay 0.01 --momentum 0.95 --batch 100 --monitor 20 --generate 500 --alt repl-pool-xtra-char
+#python pretrain.py --context 28 --n_hidden 128 --dataset web --schedule cyclic --learning_rate 0.001 --start_factor 0.001 --period 10000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.17
+#python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.0001 --start_factor 0.001 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.16
+#python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.001 --start_factor 0.001 --period 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.15
+#python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.001 --start_factor 0.001 --period 1000 --opt sgd --clip 1.0 --weight_decay 0.0 --momentum 0.0 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.WEBTEXT
+#python pretrain.py --context 28 --n_hidden 128 --dataset web --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char --load checkpoint.pt.14
 #python pretrain.py --context 28 --n_hidden 128 --dataset dolma --streaming --learning_rate 0.00001 --start_factor 0.01 --period 1000 --opt adamw --weight_decay 0.01 --beta2 0.99 --batch 200 --monitor 20 --generate 500 --alt repl-pool-deep-char
 
 

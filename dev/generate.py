@@ -59,33 +59,15 @@ if args.pretrained:
 else:
     model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
 
-m = model.to(device)
+if args.verbose:
+    torchinfo.summary(model, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1],dtype=torch.int32)])
 
+m = model.to(device)
 if args.load is not None:
     m.load_state_dict(torch.load(args.load, map_location=device, weights_only=True))
 
-# Iterate over all named parameters in the model
-magnitudes = []
-for name, param in m.named_parameters():
-    # Only consider parameters that are weights (not biases or running stats)
-    # This is a general approach, but you can tailor 'weight' filtering if needed.
-    if 'weight' in name:
-        #print('name', name)
-        # Detach and move to CPU if necessary for large models/memory management
-        weights = param.data
-        magnitudes.append(weights.view(-1)) # Flatten the tensor and add to list
-# Concatenate all flattened magnitude tensors into a single 1D tensor
-all_magnitudes = torch.cat(magnitudes)
-# Calculate the mean of the combined magnitudes
-#mean_magnitude = torch.mean(all_magnitudes)
-#print('mean_magnitude',  mean_magnitude.item())
-#print('weights', len(all_magnitudes), torch.mean(all_magnitudes).item(), torch.std(all_magnitudes).item(), torch.min(all_magnitudes).item(), torch.max(all_magnitudes).item())
-
-#ctx = torch.zeros([1,args.n_enc+args.n_hidden,args.context,args.context])
-ctx = torch.zeros([1,args.n_hidden,args.context,args.context])
-ctx = ctx.to(device)
 m.eval()
-tok,mat = m.generate(args.prompt, args.n, ctx)
+tok,mat = m.generate(args.prompt, args.n)
 s = ''.join(tok)
 print('---------------------------------------------------------------------------------- PROMPT ----------------------------------------------------------------------------------')
 print(args.prompt)
