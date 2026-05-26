@@ -51,6 +51,7 @@ parser.add_argument('--weight_decay', help='',default=0.0, type=float)
 parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
+parser.add_argument('--concat', help='concatenate context and token embedding channel-wise instead of adding',default=False, action='store_true')
 parser.add_argument('--beta1', help='second adamw moment coefficient',default=0.9, type=float)
 parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.999, type=float)
 #parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
@@ -129,7 +130,7 @@ elif args.dataset=='mix':
     hf_columns = ['text','text']
     hf_ratios = [0.1, 0.9]
 
-model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt, concat=args.concat)
 print('vocab_size', model.tokenizer.vocab_size)
 sample_example=''
 num_examples=0
@@ -314,7 +315,7 @@ try:
         total_norm = total_norm ** 0.5
         garr.append(total_norm)
         if (i%args.monitor)==0:
-            s = 'STEP i {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {:.110}'.format(
+            s = 'STEP {:10} wall {} loss {:12.9f} grad {:12.6f} lr {:10.9f} mean {:12.6f} std {:12.6f} example {:10} {:.110}'.format(
                 i, datetime.datetime.now(), np.mean(larr[-args.monitor:]), np.mean(garr[-args.monitor:]), scheduler.get_last_lr()[0],
                 torch.mean(model.ctx).item(), torch.std(model.ctx).item(), num_examples, sample_example)
             print(s)

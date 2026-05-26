@@ -71,9 +71,12 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
         return x
 
 class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
-    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt):
+    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=False):
         super().__init__()
         self.alt = alt
+        self.concat = concat
+        if concat:
+            self.input_proj = nn.Conv2d(2*n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
         if 'res' in alt:
             layers = []
             for i in range(int(context*np.sqrt(2))):
@@ -88,31 +91,46 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             self.layers = nn.ModuleList(layers)
         elif 'xtra' in alt:
             layers = []
-            for i in range(context*4):
+            for i in range(context*2):
                 layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
             self.last = nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
             self.layers = nn.ModuleList(layers)
+        elif 'wide' in alt:
+            layers = []
+            for i in range(context//3):
+                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=7, stride=1, padding=3))
+                layers.append(nn.ReLU())
+            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
+            self.layers = nn.ModuleList(layers)
         elif 'fixed' in alt:
             layers = []
-            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
-            layers.append(nn.ReLU())
-            for i in range(4):
+            #layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
+            #layers.append(nn.ReLU())
+            for i in range(context):
                 layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1))
                 layers.append(nn.ReLU())
             layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
             self.layers = nn.ModuleList(layers)
     def forward(self, x):
+        if self.concat:
+            x = self.input_proj(x)
         if 'res' in self.alt or 'deep' in self.alt:
             for layer in self.layers:
                 x = 0.5*x + layer(x)
             x = self.last(x)
         elif 'xtra' in self.alt:
-            x0 = x.clone()
+            #x0 = x.clone()
             for layer in self.layers:
-                x = x0 + layer(x)
+                x = 0.5*x + layer(x)
+                #x = 0.5*x0 + 0.5*x + layer(x)
+                #x = x0 + layer(x)
                 #x = 0.5*x + layer(x)
                 #x = 0.5*x0 + 0.5*x + layer(x)
             x = self.last(x)
+            #del x0
+        elif 'wide' in self.alt:
+            for layer in self.layers:
+                x = layer(x)
         elif 'fixed' in self.alt:
             for layer in self.layers:
                 x = layer(x)
@@ -205,9 +223,10 @@ class CharacterOneHotEmbedding(nn.Module):
         return one_hot.float()
 
 class CNN_LM(nn.Module, PyTorchModelHubMixin):
-    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt):
+    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=False):
         super().__init__()
         self.alt = alt
+        self.concat = concat
         self.n_hidden = n_hidden
         self.n_embd = n_embd
         self.n_enc = n_enc
@@ -216,9 +235,9 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         self.context = context
 
         self.ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
-        self.projector = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
+        self.projector = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=concat)
         if 'dbl' in self.alt:
-            self.projector2 = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
+            self.projector2 = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=concat)
         self.encoder = CNN_ENCODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
         self.decoder = CNN_DECODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
 
@@ -246,13 +265,13 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
         if 'dbl' in self.alt:
-            res1 = torch.add(self.ctx, enc)
+            res1 = torch.cat([self.ctx, enc], dim=1) if self.concat else torch.add(self.ctx, enc)
             proj = self.projector(res1)
-            res2 = torch.add(proj, enc)
+            res2 = torch.cat([proj, enc], dim=1) if self.concat else torch.add(proj, enc)
             proj = self.projector2(res2)
             self.ctx = proj.clone().detach()
         else:
-            res = torch.add(enc, self.ctx)
+            res = torch.cat([enc, self.ctx], dim=1) if self.concat else torch.add(enc, self.ctx)
             proj = self.projector(res)
             self.ctx = proj.clone().detach()
 
@@ -354,7 +373,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
                 tok.append(t)
             logits,_ = self.forward(idx)
             f = self.ctx.cpu().numpy()
-            f = np.squeeze(f)
+            f = f[0]
             f = np.std(f, axis=0)
             vis.append(f)
         

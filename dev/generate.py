@@ -38,6 +38,7 @@ parser.add_argument('--cmap', help='color map for visualization',default='viridi
 parser.add_argument('--vis', help='visualize context',default=False, action='store_true')
 parser.add_argument('--prompt', help='for periodic model generation during training',default='\x03\x02')
 parser.add_argument('--alt', help='CNN_LM variant',default='repl-pool-res-char')
+parser.add_argument('--concat', help='concatenate context and token embedding channel-wise instead of adding',default=False, action='store_true')
 parser.add_argument('--n', help='number of tokens to generate',default=200, type=int)
 parser.add_argument('--load', help='load pytorch state dict',default=None)
 parser.add_argument('--n_hidden', help='',default=256, type=int)
@@ -55,9 +56,9 @@ else:
     device = args.device
 
 if args.pretrained:
-    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt).from_pretrained('siliconperception/CNN_LM')
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt, concat=args.concat).from_pretrained('siliconperception/CNN_LM')
 else:
-    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt)
+    model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt, concat=args.concat)
 
 if args.verbose:
     torchinfo.summary(model, col_names=["input_size","output_size","num_params"], input_data=[torch.zeros([1],dtype=torch.int32)])
