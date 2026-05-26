@@ -71,13 +71,18 @@ class CNN_DECODER(nn.Module): # project feature map [H,W,C] to token logits [V]
         return x
 
 class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
-    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=False):
+    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, proj_depth=4):
         super().__init__()
         self.alt = alt
-        self.concat = concat
-        if concat:
-            self.input_proj = nn.Conv2d(2*n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)
-        if 'res' in alt:
+        if 'proj' in alt:
+            layers = []
+            in_ch = 2 * n_hidden  # concatenated context + token encoding
+            for i in range(proj_depth):
+                layers.append(nn.Conv2d(in_ch, n_hidden, kernel_size=3, stride=1, padding=1))
+                layers.append(nn.ReLU())
+                in_ch = n_hidden
+            self.layers = nn.ModuleList(layers)
+        elif 'res' in alt:
             layers = []
             for i in range(int(context*np.sqrt(2))):
                 layers.append(nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel_size=3, stride=1, padding=1), nn.ReLU()))
@@ -112,9 +117,10 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
             self.layers = nn.ModuleList(layers)
     def forward(self, x):
-        if self.concat:
-            x = self.input_proj(x)
-        if 'res' in self.alt or 'deep' in self.alt:
+        if 'proj' in self.alt:
+            for layer in self.layers:
+                x = layer(x)
+        elif 'res' in self.alt or 'deep' in self.alt:
             for layer in self.layers:
                 x = 0.5*x + layer(x)
             x = self.last(x)
@@ -223,10 +229,9 @@ class CharacterOneHotEmbedding(nn.Module):
         return one_hot.float()
 
 class CNN_LM(nn.Module, PyTorchModelHubMixin):
-    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=False):
+    def __init__(self, n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, proj_depth=4):
         super().__init__()
         self.alt = alt
-        self.concat = concat
         self.n_hidden = n_hidden
         self.n_embd = n_embd
         self.n_enc = n_enc
@@ -235,9 +240,9 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         self.context = context
 
         self.ctx = torch.zeros([1,self.n_hidden,self.context,self.context])
-        self.projector = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=concat)
+        self.projector = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, proj_depth=proj_depth)
         if 'dbl' in self.alt:
-            self.projector2 = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, concat=concat)
+            self.projector2 = CNN_PROJECTOR(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt, proj_depth=proj_depth)
         self.encoder = CNN_ENCODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
         self.decoder = CNN_DECODER(n_hidden, n_embd, n_enc, n_dec, context, vocab, alt)
 
@@ -265,14 +270,15 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         tok = tok.unsqueeze(-1)
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
+        use_concat = 'proj' in self.alt
         if 'dbl' in self.alt:
-            res1 = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if self.concat else torch.add(self.ctx, enc)
+            res1 = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if use_concat else torch.add(self.ctx, enc)
             proj = self.projector(res1)
-            res2 = torch.cat([proj, enc], dim=1) if self.concat else torch.add(proj, enc)
+            res2 = torch.cat([proj, enc], dim=1) if use_concat else torch.add(proj, enc)
             proj = self.projector2(res2)
             self.ctx = proj.clone().detach()
         else:
-            res = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if self.concat else torch.add(enc, self.ctx)
+            res = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if use_concat else torch.add(enc, self.ctx)
             proj = self.projector(res)
             self.ctx = proj.clone().detach()
 
