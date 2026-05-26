@@ -257,7 +257,8 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
             self.lmhead = self.tok_model.lm_head    # 256->50257
 
     def reset(self):
-        self.ctx = 0
+        device = next(self.parameters()).device
+        self.ctx = torch.zeros([1, self.n_hidden, self.context, self.context], device=device)
         
     def forward(self, idx, targets=None): # idx and targets are both (B,T) tensor of integers
         tok = self.embed(idx)
@@ -265,13 +266,13 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
         if 'dbl' in self.alt:
-            res1 = torch.cat([self.ctx, enc], dim=1) if self.concat else torch.add(self.ctx, enc)
+            res1 = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if self.concat else torch.add(self.ctx, enc)
             proj = self.projector(res1)
             res2 = torch.cat([proj, enc], dim=1) if self.concat else torch.add(proj, enc)
             proj = self.projector2(res2)
             self.ctx = proj.clone().detach()
         else:
-            res = torch.cat([enc, self.ctx], dim=1) if self.concat else torch.add(enc, self.ctx)
+            res = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if self.concat else torch.add(enc, self.ctx)
             proj = self.projector(res)
             self.ctx = proj.clone().detach()
 
