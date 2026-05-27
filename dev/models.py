@@ -102,10 +102,11 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             self.layers = nn.ModuleList(layers)
         elif 'wide' in alt:
             layers = []
-            for i in range(context//3):
-                layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=7, stride=1, padding=3))
+            in_ch = 2 * n_hidden  # concatenated context + token encoding
+            for i in range(proj_depth):
+                layers.append(nn.Conv2d(in_ch, n_hidden, kernel_size=5, stride=1, padding=2))
                 layers.append(nn.ReLU())
-            layers.append(nn.Conv2d(n_hidden, n_hidden, kernel_size=1, stride=1, padding=0)) # linear output
+                in_ch = n_hidden
             self.layers = nn.ModuleList(layers)
         elif 'fixed' in alt:
             layers = []
@@ -270,7 +271,7 @@ class CNN_LM(nn.Module, PyTorchModelHubMixin):
         tok = tok.unsqueeze(-1)
         tok = tok.unsqueeze(-1)
         enc = self.encoder(tok)
-        use_concat = 'proj' in self.alt
+        use_concat = 'proj' in self.alt or 'wide' in self.alt
         if 'dbl' in self.alt:
             res1 = torch.cat([self.ctx.expand_as(enc), enc], dim=1) if use_concat else torch.add(self.ctx, enc)
             proj = self.projector(res1)
