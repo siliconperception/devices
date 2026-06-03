@@ -2,7 +2,8 @@
 
 # STEP 1 : initialize with adamw
 
-python pretrain.py --context 96 --n_hidden 96 --dataset tiny --learning_rate 0.0001 --opt adamw --weight_decay 0.01 --beta2 0.95 --batch 50 --monitor 20 --generate 500 --alt repl-pool-proj-char --proj_depth 48
+python pretrain.py --context 96 --n_hidden 96 --dataset tiny --learning_rate 0.000001 --opt adamw --weight_decay 0.01 --beta2 0.95 --batch 20 --monitor 20 --generate 500 --alt repl-pool-wide-char --proj_depth 64
+#python pretrain.py --context 96 --n_hidden 96 --dataset tiny --learning_rate 0.00001 --opt adamw --weight_decay 0.01 --beta2 0.95 --batch 20 --monitor 20 --generate 500 --alt repl-pool-proj-char --proj_depth 96
 #python pretrain.py --context 96 --n_hidden 96 --dataset tiny --learning_rate 0.000001 --opt adamw --weight_decay 0.01 --beta2 0.95 --batch 50 --monitor 20 --generate 500 --alt repl-pool-wide-char --concat
 #python pretrain.py --context 96 --n_hidden 96 --dataset tiny --learning_rate 0.000001 --opt adamw --weight_decay 0.01 --beta2 0.95 --batch 50 --monitor 20 --generate 500 --alt repl-pool-wide-char
 #python pretrain.py --context 14 --n_hidden 384 --dataset web --learning_rate 0.0001 --opt adamw --weight_decay 0.01 --momentum 0.99 --batch 1000 --monitor 20 --generate 500 --alt repl-pool-fixed-char

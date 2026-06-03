@@ -104,8 +104,9 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             layers = []
             in_ch = 2 * n_hidden  # concatenated context + token encoding
             for i in range(proj_depth):
-                layers.append(nn.Conv2d(in_ch, n_hidden, kernel_size=5, stride=1, padding=2))
-                layers.append(nn.ReLU())
+                layers.append(nn.Sequential(nn.Conv2d(in_ch, n_hidden, kernel_size=5, stride=1, padding=2), nn.ReLU()))
+                #layers.append(nn.Conv2d(in_ch, n_hidden, kernel_size=5, stride=1, padding=2))
+                #layers.append(nn.ReLU())
                 in_ch = n_hidden
             self.layers = nn.ModuleList(layers)
         elif 'fixed' in alt:
@@ -136,8 +137,9 @@ class CNN_PROJECTOR(nn.Module): # project feature map [H,W,C] to [H,W,C]
             x = self.last(x)
             #del x0
         elif 'wide' in self.alt:
-            for layer in self.layers:
-                x = layer(x)
+            x = self.layers[0](x)        # first layer: 2*n_hidden -> n_hidden, no residual
+            for layer in self.layers[1:]:
+                x = 0.5*x + layer(x)    # remaining layers: n_hidden -> n_hidden
         elif 'fixed' in self.alt:
             for layer in self.layers:
                 x = layer(x)
