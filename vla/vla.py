@@ -44,6 +44,8 @@ parser.add_argument('--context',       default=7,     type=int,
                     help='spatial size S of the DFF grid (S×S)')
 parser.add_argument('--n_hidden',      default=512,   type=int,
                     help='ContextCNN channel depth')
+parser.add_argument('--c_text',        default=None,  type=int,
+                    help='token embedding channels (parallel to --c_audio); default = n_hidden')
 parser.add_argument('--depth',         default=7,     type=int,
                     help='ContextCNN conv layer count')
 parser.add_argument('--kernel',        default=3,     type=int,
@@ -171,7 +173,7 @@ if _mix is not None:
 
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'depth', 'kernel', 'residual', 'cond',
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'depth', 'kernel', 'residual', 'cond',
               'norm', 'state_norm',
               'no_image', 'no_audio', 'c_audio', 'n_mels', 'fps', 'mel_hop',
               'audio_work_sr', 'audio_window')
@@ -184,6 +186,9 @@ if args.load is not None:
         for _k in _ARCH_ARGS:
             if _k in _saved:
                 setattr(args, _k, _saved[_k])
+
+if args.c_text is None:          # default token width to n_hidden (back-compat: old
+    args.c_text = args.n_hidden  # checkpoints have no c_text key, so tok_embed stays n_hidden)
 
 # ── log / device / seed ───────────────────────────────────────────────────────
 
@@ -308,17 +313,18 @@ class VLAModel(nn.Module):
     --cond. Absent modalities (None) contribute zeros so concat width is fixed."""
     def __init__(self, n_hidden, depth, kernel, S, residual, cond,
                  use_audio, use_image, c_audio, n_mels, mel_hop, work_sr,
-                 norm='none', state_norm='none'):
+                 c_text=None, norm='none', state_norm='none'):
         super().__init__()
         self.S          = S
         self.n_hidden   = n_hidden
+        self.c_text     = c_text if c_text is not None else n_hidden
         self.cond       = cond
         self.use_audio  = use_audio
         self.use_image  = use_image
         self.c_audio    = c_audio
         self.state_norm = state_norm
 
-        self.tok_embed = nn.Embedding(256, n_hidden)   # current token → n_hidden
+        self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
         self.context   = ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm)
         self.decoder   = DecoderCNN(n_hidden, S)
 
@@ -326,16 +332,18 @@ class VLAModel(nn.Module):
         self.image_encoder = ImageEncoder() if use_image else None
 
         if cond == 'add':
-            # project each modality to n_hidden, summed into the DFF + token grid
+            # project each modality to n_hidden, summed into the DFF (text symmetric
+            # with audio/image now that c_text may differ from n_hidden)
+            self.text_proj  = nn.Conv2d(self.c_text, n_hidden, 1)
             self.audio_proj = nn.Conv2d(c_audio,  n_hidden, 1) if use_audio else None
             self.image_proj = nn.Conv2d(IMAGE_CH, n_hidden, 1) if use_image else None
             self.input_adapter = None
         else:  # concat
-            in_ch = 2 * n_hidden \
+            in_ch = n_hidden + self.c_text \
                   + (c_audio  if use_audio else 0) \
                   + (IMAGE_CH if use_image else 0)
             self.input_adapter = nn.Conv2d(in_ch, n_hidden, 1)
-            self.audio_proj = self.image_proj = None
+            self.text_proj = self.audio_proj = self.image_proj = None
 
         self.dff        = None   # [B, n_hidden, S, S] — DFF register, always detached
         self.last_a_enc = None
@@ -355,8 +363,8 @@ class VLAModel(nn.Module):
 
     def _tok_grid(self, byte_idx):
         B   = byte_idx.shape[0]
-        tok = self.tok_embed(byte_idx)                             # [B, n_hidden]
-        return tok.view(B, self.n_hidden, 1, 1).expand(-1, -1, self.S, self.S)
+        tok = self.tok_embed(byte_idx)                             # [B, c_text]
+        return tok.view(B, self.c_text, 1, 1).expand(-1, -1, self.S, self.S)
 
     def _norm_state(self, x):
         """Bound the recurrent state magnitude to prevent unbounded growth."""
@@ -394,7 +402,7 @@ class VLAModel(nn.Module):
         def _g(feat, mask):
             return feat if mask is None else feat * mask.view(-1, 1, 1, 1)
         if self.cond == 'add':
-            out = dff + tok_grid
+            out = dff + self.text_proj(tok_grid)
             if a_feat is not None: out = out + _g(self.audio_proj(a_feat), a_mask)
             if i_feat is not None: out = out + _g(self.image_proj(i_feat), i_mask)
             return out
@@ -446,7 +454,7 @@ class VLAModel(nn.Module):
         def _step(b):
             nonlocal dff
             bi   = torch.tensor([b], dtype=torch.long, device=dev)
-            tok  = self.tok_embed(bi).view(1, self.n_hidden, 1, 1).expand(-1, -1, self.S, self.S)
+            tok  = self.tok_embed(bi).view(1, self.c_text, 1, 1).expand(-1, -1, self.S, self.S)
             img  = img_feed() if img_feed else None
             aud  = aud_feed() if aud_feed else None
             i_feat, a_feat = self._encode_modalities(1, dev, img, aud)
@@ -988,6 +996,7 @@ model = VLAModel(
     use_audio = not args.no_audio,
     use_image = not args.no_image,
     c_audio   = args.c_audio,
+    c_text    = args.c_text,
     n_mels    = args.n_mels,
     mel_hop   = args.mel_hop,
     work_sr   = args.audio_work_sr,
@@ -1002,13 +1011,33 @@ if _loaded_ckpt is not None:
     del _loaded_ckpt
 
 _dff_shape = (1, args.n_hidden, args.context, args.context)
-print(torchinfo.summary(model.context, input_size=_dff_shape,
-                         col_names=['input_size', 'output_size', 'num_params'], verbose=0))
-print(torchinfo.summary(model.decoder, input_size=_dff_shape,
-                         col_names=['input_size', 'output_size', 'num_params'], verbose=0))
+def _summ(title, mod, **kw):
+    s = str(torchinfo.summary(mod, col_names=['input_size', 'output_size', 'num_params'],
+                              verbose=0, **kw))
+    block = f'── {title} ──\n{s}'
+    print(block)
+    with open(args.log, 'a') as f:                  # mirror to log, each line prefixed INFO
+        for line in block.splitlines():
+            print(f'INFO {line}', file=f)
+
+# Summaries follow the data flow: token + modality encoders → fuse (input_adapter /
+# text_proj+audio_proj+image_proj) → context (recurrent state update) → decoder → logits.
+_summ('tok_embed', model.tok_embed, input_data=torch.zeros(1, dtype=torch.long))
+if model.audio_encoder is not None:
+    _summ('audio_encoder', model.audio_encoder, input_size=(1, 1, args.audio_window))
 if model.image_encoder is not None:
-    print(torchinfo.summary(model.image_encoder, input_size=(1, 3, 224, 224),
-                            col_names=['input_size', 'output_size', 'num_params'], verbose=0))
+    _summ('image_encoder', model.image_encoder, input_size=(1, 3, 224, 224))
+if model.cond == 'add':
+    _summ('text_proj', model.text_proj, input_size=(1, model.c_text, args.context, args.context))
+    if model.audio_proj is not None:
+        _summ('audio_proj', model.audio_proj, input_size=(1, args.c_audio, args.context, args.context))
+    if model.image_proj is not None:
+        _summ('image_proj', model.image_proj, input_size=(1, IMAGE_CH, args.context, args.context))
+elif model.input_adapter is not None:
+    _summ('input_adapter (concat)', model.input_adapter,
+          input_size=(1, model.input_adapter.in_channels, args.context, args.context))
+_summ('context', model.context, input_size=_dff_shape)
+_summ('decoder', model.decoder, input_size=_dff_shape)
 
 model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 'M trainable params')
@@ -1306,6 +1335,7 @@ def _param_groups_named(model):
     if model.audio_encoder is not None:
         g['aud'] = list(model.audio_encoder.parameters())
     if model.cond == 'add':
+        g['tprj'] = list(model.text_proj.parameters())
         if model.audio_proj is not None: g['aprj'] = list(model.audio_proj.parameters())
         if model.image_proj is not None: g['iprj'] = list(model.image_proj.parameters())
     elif model.input_adapter is not None:
