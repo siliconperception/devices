@@ -79,7 +79,7 @@ parser.add_argument('--audio_window',  default=1600,  type=int,
                     help='samples per frame fed to the audio encoder (sliding window)')
 # training
 parser.add_argument('--dataset',       default='tiny',
-                    help='tiny | c4 | web | librispeech | cc3m | webvid')
+                    help='tiny | c4 | web | brt | librispeech | cc3m | webvid')
 parser.add_argument('--mix',           default=None,
                     help='joint multi-dataset training, "name:weight,..." e.g. '
                          '"webvid:0.5,web:0.5"; overrides --dataset, samples one dataset '
@@ -767,6 +767,7 @@ _TEXT_DATASETS = {
     'tiny': ('roneneldan/TinyStories', None, 'train', 'text'),
     'c4':   ('allenai/c4',            'en', 'train', 'text'),
     'web':  ('Skylion007/openwebtext', None, 'train', 'text'),
+    'brt':  ('allenai/big-reasoning-traces', 'DeepSeek', 'train', 'text'),
 }
 
 _DS_SPEC = {   # name → (hf_name, hf_config, split)
