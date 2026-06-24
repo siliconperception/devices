@@ -46,8 +46,16 @@ parser.add_argument('--n_hidden',      default=512,   type=int,
                     help='ContextCNN channel depth')
 parser.add_argument('--c_text',        default=None,  type=int,
                     help='token embedding channels (parallel to --c_audio); default = n_hidden')
+parser.add_argument('--rate',          default=1,     type=int,
+                    help='recurrent steps per token: training replicates each input token N '
+                         'times (target unchanged); inference injects the current token and '
+                         'runs N steps before sampling. 1 = original behavior')
 parser.add_argument('--depth',         default=7,     type=int,
                     help='ContextCNN conv layer count')
+parser.add_argument('--n_layers',      default=1,     type=int,
+                    help='stack N (ContextCNN + feedback) recurrent layers in series between '
+                         'the thin encoder and decoder; each layer keeps its own DFF state. '
+                         '1 = original single-layer behavior')
 parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
 parser.add_argument('--residual',      default=False, action=argparse.BooleanOptionalAction,
@@ -57,8 +65,10 @@ parser.add_argument('--cond',          default='add', choices=['add', 'concat'],
                          'concat (channel cat → 1×1 adapter)')
 parser.add_argument('--norm',          default='none', choices=['none', 'group', 'batch'],
                     help='normalization in ContextCNN conv blocks (stabilizes deep/recurrent)')
-parser.add_argument('--state_norm',    default='none', choices=['none', 'tanh', 'rms'],
-                    help='bound the recurrent DFF state each step (tanh | rms)')
+parser.add_argument('--state_norm',    default='none', choices=['none', 'tanh', 'rms', 'soft'],
+                    help='bound the recurrent DFF state each step. tanh/rms are hard caps; '
+                         'soft is a gentle RMS cap (near-identity when small, saturates toward '
+                         'unit RMS only when large) that stabilizes without preventing learning')
 # audio / video
 parser.add_argument('--no_image',      default=False, action='store_true',
                     help='disable the image encoder entirely')
@@ -174,7 +184,7 @@ if _mix is not None:
 
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'depth', 'kernel', 'residual', 'cond',
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'residual', 'cond',
               'norm', 'state_norm',
               'no_image', 'no_audio', 'c_audio', 'n_mels', 'fps', 'mel_hop',
               'audio_work_sr', 'audio_window')
@@ -314,11 +324,13 @@ class VLAModel(nn.Module):
     --cond. Absent modalities (None) contribute zeros so concat width is fixed."""
     def __init__(self, n_hidden, depth, kernel, S, residual, cond,
                  use_audio, use_image, c_audio, n_mels, mel_hop, work_sr,
-                 c_text=None, norm='none', state_norm='none'):
+                 c_text=None, rate=1, n_layers=1, norm='none', state_norm='none'):
         super().__init__()
         self.S          = S
         self.n_hidden   = n_hidden
         self.c_text     = c_text if c_text is not None else n_hidden
+        self.rate       = max(1, rate)        # recurrent steps per token (see --rate)
+        self.n_layers   = max(1, n_layers)    # stacked (ContextCNN + feedback) layers (see --n_layers)
         self.cond       = cond
         self.use_audio  = use_audio
         self.use_image  = use_image
@@ -346,7 +358,26 @@ class VLAModel(nn.Module):
             self.input_adapter = nn.Conv2d(in_ch, n_hidden, 1)
             self.text_proj = self.audio_proj = self.image_proj = None
 
-        self.dff        = None   # [B, n_hidden, S, S] — DFF register, always detached
+        # Deep layers 2..N: each is its own (ContextCNN + feedback) unit. Layer 1 (above)
+        # takes the token/modality injection; deep layers take the previous layer's output
+        # combined with their own DFF state. Only built when n_layers>1, so the n_layers=1
+        # state_dict is byte-identical to the original (old checkpoints still load).
+        if self.n_layers > 1:
+            self.deep_context = nn.ModuleList(
+                ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm)
+                for _ in range(self.n_layers - 1))
+            if cond == 'add':
+                self.deep_proj = nn.ModuleList(
+                    nn.Conv2d(n_hidden, n_hidden, 1) for _ in range(self.n_layers - 1))
+                self.deep_adapter = None
+            else:  # concat: fuse (prev_output, dff_i) — both n_hidden — back to n_hidden
+                self.deep_adapter = nn.ModuleList(
+                    nn.Conv2d(2 * n_hidden, n_hidden, 1) for _ in range(self.n_layers - 1))
+                self.deep_proj = None
+        else:
+            self.deep_context = self.deep_proj = self.deep_adapter = None
+
+        self.dff        = None   # [B, n_layers, n_hidden, S, S] — per-layer DFF stack, detached
         self.last_a_enc = None
         self.last_i_enc = None
         self._img_cache = None   # (img_tensor, i_feat) — frozen encoder is deterministic,
@@ -359,8 +390,10 @@ class VLAModel(nn.Module):
         return self
 
     def _init_dff(self, B, device):
-        if self.dff is None or self.dff.shape[0] != B or self.dff.device != torch.device(device):
-            self.dff = torch.zeros(B, self.n_hidden, self.S, self.S, device=device)
+        if (self.dff is None or self.dff.shape[0] != B
+                or self.dff.shape[1] != self.n_layers
+                or self.dff.device != torch.device(device)):
+            self.dff = torch.zeros(B, self.n_layers, self.n_hidden, self.S, self.S, device=device)
 
     def _tok_grid(self, byte_idx):
         B   = byte_idx.shape[0]
@@ -374,6 +407,14 @@ class VLAModel(nn.Module):
         if self.state_norm == 'rms':
             rms = x.pow(2).mean(dim=(1, 2, 3), keepdim=True).sqrt()
             return x / (rms + 1e-5)
+        if self.state_norm == 'soft':
+            # Soft RMS cap: divide by sqrt(1 + meansquare) instead of by the RMS.
+            # When the state is small (msq << 1) the denominator ≈ 1, so it passes
+            # through almost unchanged (no penalty); as it grows (msq >> 1) this
+            # approaches x/rms, capping the output RMS just below 1. Gentler than
+            # 'rms', which forces exactly unit RMS every step and can stall learning.
+            msq = x.pow(2).mean(dim=(1, 2, 3), keepdim=True)
+            return x / (1.0 + msq).sqrt()
         return x
 
     def _encode_modalities(self, B, dev, img, aud):
@@ -412,6 +453,27 @@ class VLAModel(nn.Module):
         if i_feat is not None: parts.append(_g(i_feat, i_mask))
         return self.input_adapter(torch.cat(parts, dim=1))
 
+    def _fuse_deep(self, li, dff_i, prev):
+        """Combine a deep layer's own DFF state with the previous layer's output
+        (both [B, n_hidden, S, S]) into that layer's ContextCNN input."""
+        if self.cond == 'add':
+            return dff_i + self.deep_proj[li](prev)
+        return self.deep_adapter[li](torch.cat([prev, dff_i], dim=1))
+
+    def _layers(self, dff, tok_grid, i_feat, a_feat, img_mask=None, aud_mask=None):
+        """Run the stack of n_layers (ContextCNN + feedback) units once.
+        dff: [B, n_layers, n_hidden, S, S]. Layer 0 takes the token/modality injection;
+        each deeper layer takes the previous layer's output. Returns
+        (new_dff_stack [B, n_layers, ...], last_layer_output [B, n_hidden, S, S]).
+        No detach here — the caller detaches the returned stack to bound the time horizon."""
+        o = self._norm_state(self.context(
+            self._fuse(dff[:, 0], tok_grid, i_feat, a_feat, img_mask, aud_mask)))
+        outs = [o]
+        for li in range(self.n_layers - 1):
+            o = self._norm_state(self.deep_context[li](self._fuse_deep(li, dff[:, li + 1], o)))
+            outs.append(o)
+        return torch.stack(outs, dim=1), o
+
     def forward(self, byte_idx, img=None, aud=None, targets=None, flag=None,
                 img_mask=None, aud_mask=None):
         """
@@ -435,10 +497,15 @@ class VLAModel(nn.Module):
         self.last_a_enc = a_feat.detach() if a_feat is not None else None
         self.last_i_enc = i_feat.detach() if i_feat is not None else None
 
-        new_ctx  = self.context(self._fuse(self.dff, tok_grid, i_feat, a_feat,
-                                           img_mask, aud_mask))
-        new_ctx  = self._norm_state(new_ctx)
-        self.dff = new_ctx.detach().clone()             # store for next step
+        # --rate: inject the same token (and modality features) for `rate` recurrent
+        # steps before predicting. The per-layer DFF stack is detached between steps,
+        # so the gradient horizon stays one step (the final injection); the earlier
+        # ones just roll the state forward. rate=1 reproduces the original behavior.
+        # --n_layers: each step runs the full stack (gradients flow through all layers).
+        for _ in range(self.rate):
+            stack, new_ctx = self._layers(self.dff, tok_grid, i_feat, a_feat,
+                                          img_mask, aud_mask)
+            self.dff = stack.detach().clone()           # store for next step
 
         logits = self.decoder(new_ctx)
         loss   = F.cross_entropy(logits, targets.long()) if targets is not None else None
@@ -450,18 +517,15 @@ class VLAModel(nn.Module):
         callbacks returning the current frame tensor (or None)."""
         self.eval()
         dev = next(self.parameters()).device
-        dff = torch.zeros(1, self.n_hidden, self.S, self.S, device=dev)
+        dff = torch.zeros(1, self.n_layers, self.n_hidden, self.S, self.S, device=dev)
 
-        def _step(b):
+        def _step(b, img, aud):
             nonlocal dff
             bi   = torch.tensor([b], dtype=torch.long, device=dev)
             tok  = self.tok_embed(bi).view(1, self.c_text, 1, 1).expand(-1, -1, self.S, self.S)
-            img  = img_feed() if img_feed else None
-            aud  = aud_feed() if aud_feed else None
             i_feat, a_feat = self._encode_modalities(1, dev, img, aud)
-            new_ctx = self.context(self._fuse(dff, tok, i_feat, a_feat))
-            new_ctx = self._norm_state(new_ctx)
-            dff     = new_ctx.detach().clone()
+            stack, new_ctx = self._layers(dff, tok, i_feat, a_feat)
+            dff     = stack.detach().clone()
             if not dff.isfinite().all():
                 print(f'generate: dff NaN/Inf  dff_std={dff[dff.isfinite()].std().item():.4f}')
                 return None
@@ -471,10 +535,22 @@ class VLAModel(nn.Module):
                 return None
             return logits
 
+        def _stepN(b):
+            # --rate: inject the token (and its modality frame, fetched once) for `rate`
+            # recurrent steps; the logits after the last step seed the next sample.
+            img = img_feed() if img_feed else None
+            aud = aud_feed() if aud_feed else None
+            lg  = None
+            for _ in range(self.rate):
+                lg = _step(b, img, aud)
+                if lg is None:
+                    return None
+            return lg
+
         # feed each prompt byte exactly once; logits after the last byte seed generation
         logits = None
         for b in prompt_bytes:
-            logits = _step(b)
+            logits = _stepN(b)
             if logits is None:
                 return []
 
@@ -488,7 +564,7 @@ class VLAModel(nn.Module):
                 break
             if bval != NULL:
                 out.append(bval)
-            logits = _step(bval)
+            logits = _stepN(bval)
             if logits is None:
                 break
         return out
@@ -1000,6 +1076,8 @@ model = VLAModel(
     use_image = not args.no_image,
     c_audio   = args.c_audio,
     c_text    = args.c_text,
+    rate      = args.rate,
+    n_layers  = args.n_layers,
     n_mels    = args.n_mels,
     mel_hop   = args.mel_hop,
     work_sr   = args.audio_work_sr,
@@ -1039,7 +1117,11 @@ if model.cond == 'add':
 elif model.input_adapter is not None:
     _summ('input_adapter (concat)', model.input_adapter,
           input_size=(1, model.input_adapter.in_channels, args.context, args.context))
-_summ('context', model.context, input_size=_dff_shape)
+_summ('context (layer 1)' if model.n_layers > 1 else 'context',
+      model.context, input_size=_dff_shape)
+if model.deep_context is not None:
+    _summ(f'deep_context x{model.n_layers - 1} (layers 2..{model.n_layers})',
+          model.deep_context[0], input_size=_dff_shape)
 _summ('decoder', model.decoder, input_size=_dff_shape)
 
 model = model.to(args.device)
@@ -1222,41 +1304,52 @@ if args.vis:
     model.eval()
     _dev    = next(model.parameters()).device
     _prompt = list(args.prompt.encode('utf-8', errors='replace')) or [START]
-    _feed   = list(_prompt)   # bytes queued to feed; refilled with the sampled byte
+    _queue  = list(_prompt)   # remaining prompt bytes to inject as new tokens
+    _b      = _queue.pop(0)   # current token being injected
+    _rep    = 0               # how many times --rate the current token has been injected
     _gen    = []              # generated bytes shown on the text line
     _nstep  = 0
-    dff     = torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
+    dff     = torch.zeros(1, model.n_layers, model.n_hidden, model.S, model.S, device=_dev)
 
     while not _vis_exit:
-        b = _feed.pop(0)
         with torch.no_grad():
-            bi   = torch.tensor([b], dtype=torch.long, device=_dev)
+            bi   = torch.tensor([_b], dtype=torch.long, device=_dev)
             tok  = model.tok_embed(bi).view(1, model.c_text, 1, 1).expand(-1, -1, model.S, model.S)
             i_feat, a_feat = model._encode_modalities(1, _dev, None, None)   # text-only
-            new_ctx = model._norm_state(model.context(model._fuse(dff, tok, i_feat, a_feat)))
-            dff     = new_ctx.detach().clone()
+            stack, new_ctx = model._layers(dff, tok, i_feat, a_feat)         # last-layer output
+            dff     = stack.detach().clone()
             logits  = model.decoder(new_ctx)
         _nstep += 1
+        _rep   += 1
 
         prob = F.softmax(logits[0] / max(args.temperature, 1e-6), dim=-1)
-        nxt  = int(torch.multinomial(prob, 1).item())
 
-        if not _feed:                          # prompt drained → sample drives the stream
-            if nxt == END or len(_gen) >= _VIS_WIN:
-                dff   = torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
-                _feed = list(_prompt)          # episode over: reset state, restart prompt
-                _gen  = []
+        # --rate: render every recurrent step, but only sample / advance the token
+        # after the current one has been injected `rate` times (inference samples
+        # every N steps; the prompt likewise advances one token per N steps).
+        if _rep >= model.rate:
+            _rep = 0
+            if _queue:
+                _b = _queue.pop(0)             # still draining the prompt
             else:
-                if nxt != NULL:
-                    _gen.append(nxt)
-                _feed = [nxt]
+                nxt = int(torch.multinomial(prob, 1).item())
+                if nxt == END or len(_gen) >= _VIS_WIN:
+                    dff    = torch.zeros(1, model.n_layers, model.n_hidden, model.S, model.S, device=_dev)
+                    _queue = list(_prompt)     # episode over: reset state, restart prompt
+                    _b     = _queue.pop(0)
+                    _gen   = []
+                else:
+                    if nxt != NULL:
+                        _gen.append(nxt)
+                    _b = nxt
 
         # ── render ──────────────────────────────────────────────────────────
-        dff_std_map = dff[0].cpu().std(dim=0).numpy()                # [S, S]
+        # DFF-std panel shows the last layer's state (the one feeding the decoder).
+        dff_std_map = new_ctx[0].cpu().std(dim=0).numpy()           # [S, S]
         prob_img    = prob.detach().cpu().numpy().reshape(16, 16)    # 256 bytes → 16×16
         _vis_header.set_text(
-            ('step {:8d}  dff_std {:6.4f}  dff_max {:7.3f}  p_max {:5.3f}  T {:.2f}').format(
-                _nstep, float(dff.std()), float(dff.abs().max()),
+            ('step {:8d}  rate {:d}  layers {:d}  dff_std {:6.4f}  dff_max {:7.3f}  p_max {:5.3f}  T {:.2f}').format(
+                _nstep, model.rate, model.n_layers, float(dff.std()), float(dff.abs().max()),
                 float(prob.max()), args.temperature)
             + '\n' + 'gen: ' + ''.join(_vc(c) for c in _gen)
         )
@@ -1412,6 +1505,11 @@ def _param_groups_named(model):
         if model.image_proj is not None: g['iprj'] = list(model.image_proj.parameters())
     elif model.input_adapter is not None:
         g['adpt'] = list(model.input_adapter.parameters())
+    if model.deep_context is not None:   # stacked layers 2..N (--n_layers)
+        deep = list(model.deep_context.parameters())
+        if model.deep_proj    is not None: deep += list(model.deep_proj.parameters())
+        if model.deep_adapter is not None: deep += list(model.deep_adapter.parameters())
+        g['deep'] = deep
     return g
 
 
