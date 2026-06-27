@@ -125,7 +125,7 @@ parser.add_argument('--checkpoint',    default=1000,  type=int)
 parser.add_argument('--log',           default=None)
 parser.add_argument('--monitor',       default=10,    type=int)
 parser.add_argument('--generate',      default=False, action='store_true',
-                    help='print generation sample at each checkpoint; skip file saves')
+                    help='one-shot: load checkpoint, generate from START+prompt, print, exit (no dataset/training)')
 parser.add_argument('--n',             default=200,   type=int,
                     help='tokens to generate per sample')
 parser.add_argument('--prompt',        default='\x02',
@@ -187,7 +187,7 @@ if _mix is not None:
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
 _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'residual', 'cond',
-              'norm', 'state_norm',
+              'norm', 'state_norm', 'rate',
               'no_image', 'no_audio', 'c_audio', 'n_mels', 'fps', 'mel_hop',
               'audio_work_sr', 'audio_window')
 
@@ -206,9 +206,12 @@ if args.c_text is None:          # default token width to n_hidden (back-compat:
 # ── log / device / seed ───────────────────────────────────────────────────────
 
 if args.log is None:
-    os.makedirs('log', exist_ok=True)
-    date = subprocess.check_output(['/usr/bin/date', '+%Y.%m.%d-%H.%M.%S']).decode().strip()
-    args.log = f'log/log.{date}'
+    if args.generate or args.vis:        # one-shot generate / visualizer: don't create a log file
+        args.log = os.devnull
+    else:
+        os.makedirs('log', exist_ok=True)
+        date = subprocess.check_output(['/usr/bin/date', '+%Y.%m.%d-%H.%M.%S']).decode().strip()
+        args.log = f'log/log.{date}'
 if args.device is None:
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 if args.seed is None:
@@ -1051,9 +1054,9 @@ def worker(stop, q, gen_q, datasets, args, mix=None):
 
 # ── dataset loading (before CUDA init) ───────────────────────────────────────
 
-if args.demo or args.vis:
-    hf_dataset = None                 # --demo streams from the webcam; --vis generates from
-                                      # the prompt token — neither needs a training dataset
+if args.demo or args.vis or args.generate:
+    hf_dataset = None                 # --demo streams from the webcam; --vis/--generate run
+                                      # from the prompt token — none need a training dataset
 else:
     print('loading dataset...')
     if _mix is not None:
@@ -1258,6 +1261,16 @@ if args.demo:
     if args.load is None:
         print('WARNING: --demo without --load is running an untrained model')
     run_demo(model, args)
+    raise SystemExit(0)
+
+if args.generate:
+    # one-shot text generation: prompt = hard-coded START + args.prompt, print the
+    # decoded continuation, then exit. No dataset, worker, optimizer or training loop.
+    if args.load is None:
+        print('WARNING: --generate without --load is running an untrained model')
+    prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
+    out    = model.generate(prompt, args.n)
+    print(args.prompt + bytes(out).decode('utf-8', errors='replace'))
     raise SystemExit(0)
 
 # ── vis setup ─────────────────────────────────────────────────────────────────
@@ -1561,7 +1574,7 @@ try:
     while True:
         # ── checkpoint / generation sample ───────────────────────────────────
         if (i % args.checkpoint) == 0:
-            no_side_effects = args.generate
+            no_side_effects = False   # --generate is now a standalone mode that exits before training
             if not no_side_effects:
                 _finite = all(torch.isfinite(p).all() for p in model.state_dict().values()
                               if p.is_floating_point())
