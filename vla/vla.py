@@ -1000,10 +1000,24 @@ def worker(stop, q, gen_q, datasets, args, mix=None):
     n_builders = max(1, args.workers)
     clip_q     = queue.Queue(maxsize=2 * n_builders)
 
+    # token-proportional dataset sampling: `weights` is the desired *token* mix, but
+    # datasets have very different tokens-per-example, so choosing examples directly by
+    # `weights` skews the token mix. Track a running mean clip length per dataset and
+    # sample examples with weight w/mean_len, so expected tokens per dataset ∝ w.
+    _len_lock = threading.Lock()
+    _len_sum  = {n: 0.0 for n in set(names)}
+    _len_cnt  = {n: 0   for n in set(names)}
+
+    def _mix_weights():
+        with _len_lock:
+            # bootstrap unseen datasets with mean_len=1 so they still get sampled
+            return [w / max(_len_sum[n] / _len_cnt[n] if _len_cnt[n] else 1.0, 1e-9)
+                    for n, w in zip(names, weights)]
+
     def builder():
         rng = random.Random()   # per-clip dataset choice (thread-local instance)
         while not stop.is_set():
-            name = rng.choices(names, weights=weights, k=1)[0]
+            name = rng.choices(names, weights=_mix_weights(), k=1)[0]
             try:
                 steps, caption = _build_clip(name, _next_example(name))
             except Exception as e:
@@ -1011,6 +1025,9 @@ def worker(stop, q, gen_q, datasets, args, mix=None):
                 continue
             if not steps:
                 continue
+            with _len_lock:                      # update token-length stats for the mix
+                _len_sum[name] += len(steps)
+                _len_cnt[name] += 1
             if name in _TEXT_DATASETS:   # pure text-only example (e.g. openwebtext)
                 _text_tally(len(steps), sample=caption)
             while not stop.is_set():
