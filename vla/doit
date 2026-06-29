@@ -1,0 +1,74 @@
+# vla.py — recurrent CNN byte-level language model (text-only core)
+#
+# New arg set (post text-only cleanup). Removed: --no_image/--no_audio, --cond,
+# --norm, --state_norm (now always RMS), --schedule/--warmup (now always linear),
+# --rate, --clip, --grad_stop, --debug, --verbose, --demo and all audio/video args.
+# --out_proj now defaults OFF (the final 1x1 projection in ContextCNN); pass
+# --out_proj to enable. Arch args (context/n_hidden/c_text/n_layers/depth/kernel/
+# residual/out_proj) restore from the checkpoint's saved_args on --load.
+
+# active run: brt+web mix, 3 layers, 7x7x512 state, c_text=1, adamw
+python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9
+
+# resume from a checkpoint (arch restored from saved_args)
+#python vla.py --mix "brt:0.5,web:0.5" --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --load checkpoint.pt
+
+# single dataset
+#python vla.py --dataset tiny --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9
+
+# sgd variant
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --momentum 0.0 --weight_decay 0.0
+
+# enable the optional final 1x1 projection in ContextCNN (+ per-layer residual)
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --out_proj --residual --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9
+
+# one-shot generate from a checkpoint (no dataset, no log file)
+#python vla.py --generate --load checkpoint.pt --prompt 'The colors of the rainbow are ' --n 200
+
+# live text-generation visualizer (DFF std + P(next token)); press x to exit
+#python vla.py --vis --load checkpoint.pt --temperature 0.8
+
+# ── ARCHIVE (pre text-only cleanup) ───────────────────────────────────────────
+# The invocations below predate the text-only cleanup and use args that no longer
+# exist (--no_image/--no_audio, --cond, --norm, --state_norm, --schedule, --rate,
+# --clip, --grad_stop, --debug, audio/video/demo). Kept for the hyperparameter
+# trajectory; not runnable as-is. They will guide the image/audio re-add.
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --state_norm rms --no-out_proj
+#python vla.py --dataset tiny --no_image --no_audio --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --state_norm rms --no-out_proj
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --state_norm rms --no-out_proj
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --weight_decay 0.0 --momentum 0.0 --state_norm rms --load checkpoint.pt.7 --no-out_proj
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --state_norm rms --load checkpoint.pt.6
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --momentum 0.0 --state_norm soft --load checkpoint.pt.5
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --n_layers 3 --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm soft
+#python vla.py --dataset tiny --no_image --no_audio --n_layers 3 --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm soft
+#python vla.py --dataset tiny --no_image --no_audio --n_layers 3 --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm soft
+#python vla.py --dataset tiny --no_image --no_audio --context 7 --n_hidden 512 --depth 14 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --momentum 0.0 --n_layers 3 --state_norm soft
+#python vla.py --dataset tiny --no_image --no_audio --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --n_layers 3 --state_norm soft
+#python vla.py --mix "web:0.45,tiny:0.10,brt:0.45" --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --n_layers 3 --state_norm soft
+#python vla.py --mix "web:0.5,tiny:0.25,brt:0.25" --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0 --n_layers 3 --state_norm soft
+#python vla.py --mix "web:0.5,tiny:0.25,brt:0.25" --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 0.01 --opt adamw --beta2 0.95 --n_layers 3 --state_norm soft
+#python vla.py --mix "brt:0.5,web:0.5" --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --n_layers 3 --state_norm soft
+#python vla.py --dataset tiny --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --n_layers 2
+#python vla.py --dataset tiny --no_image --no_audio --context 7 --n_hidden 384 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --rate 8
+#python vla.py --mix "brt:0.5,tiny:0.25,web:0.25" --no_image --no_audio --context 7 --n_hidden 384 --depth 19 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm rms
+#python vla.py --dataset brt --no_image --no_audio --context 7 --n_hidden 384 --depth 19 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm rms
+#python vla.py --mix "webvid:0.5,web:0.5" --max_clip_steps 1024 --fps 10 --workers 16 --context 7 --n_hidden 384 --c_text 64 --c_audio 64 --depth 14 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.9 --state_norm rms
+#python vla.py --mix "webvid:0.5,web:0.5" --max_clip_steps 1024 --fps 10 --workers 16 --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0 --state_norm rms --load checkpoint.pt.2
+#python vla.py --mix "webvid:0.5,web:0.5" --max_clip_steps 1024 --fps 10 --workers 16 --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.95 --state_norm rms --load checkpoint.pt
+#python vla.py --mix "webvid:0.5,web:0.5" --max_clip_steps 1024 --fps 10 --streaming --workers 16 --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.99 --state_norm rms --load checkpoint.pt
+# live webcam+mic -> caption demo (Logitech C270): pip install opencv-python sounddevice; --camera index per /dev/video*
+#python vla.py --demo --load checkpoint.pt --fps 10 --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --temperature 0.7 --camera 0
+#python vla.py --dataset cc3m --no_audio --streaming --workers 32 --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.99 --state_norm rms
+#python vla.py --dataset librispeech --no_image --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.99 --state_norm rms
+#python vla.py --dataset web --no_image --no_audio --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt adamw --beta2 0.99 --state_norm rms
+#python vla.py --dataset web --no_image --no_audio --context 7 --n_hidden 768 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0 --state_norm rms
+#python vla.py --dataset librispeech --no_image --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.001 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0 --state_norm rms
+#python vla.py --dataset librispeech --no_image --context 7 --n_hidden 512 --depth 7 --kernel 3 --no-residual --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0
+#python vla.py --dataset tiny --context 7 --n_hidden 512 --depth 7 --kernel 3 --no-residual --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.01 --period 10000 --start_factor 1.0 --opt sgd --beta1 0.0 --beta2 0.9
+# gradient-explosion stabilization (dff_std climbed to ~21 then overflowed): grad clip + bound state + early halt
+#python vla.py --dataset librispeech --no_image --load checkpoint.pt --clip 1.0 --state_norm rms --grad_stop 100 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.0001 --opt sgd --beta1 0.0
+#python vla.py --dataset librispeech --no_image --norm group --residual --grad_stop 100 --debug --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw
+# milestones: M0 text scaffold, M1 audio (LibriSpeech), M2 image (CC3M), M3 video (WebVid)
+#python vla.py --dataset librispeech --no_image --streaming --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond add --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --load checkpoint.pt
+#python vla.py --dataset cc3m --no_audio --streaming --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --load checkpoint.pt
+#python vla.py --dataset webvid --streaming --context 7 --n_hidden 512 --depth 7 --kernel 3 --cond concat --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.0001 --period 10000 --start_factor 1.0 --opt adamw --load checkpoint.pt
