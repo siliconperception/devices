@@ -60,6 +60,8 @@ parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
 parser.add_argument('--residual',      default=False, action=argparse.BooleanOptionalAction,
                     help='per-layer residual x = 0.5*x + layer(x) in ContextCNN (default off; --residual to enable)')
+parser.add_argument('--out_proj',      default=True, action=argparse.BooleanOptionalAction,
+                    help='final 1×1 linear projection in ContextCNN (default on; --no-out_proj for passthrough)')
 parser.add_argument('--cond',          default='add', choices=['add', 'concat'],
                     help='modality conditioning: add (project→sum into DFF) | '
                          'concat (channel cat → 1×1 adapter)')
@@ -187,7 +189,7 @@ if _mix is not None:
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
 _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'residual', 'cond',
-              'norm', 'state_norm', 'rate',
+              'norm', 'state_norm', 'rate', 'out_proj',
               'no_image', 'no_audio', 'c_audio', 'n_mels', 'fps', 'mel_hop',
               'audio_work_sr', 'audio_window')
 
@@ -231,7 +233,7 @@ class ContextCNN(nn.Module):
     Input:  [B, n_hidden, S, S]
     Output: [B, n_hidden, S, S]
     """
-    def __init__(self, n_hidden, depth, kernel, residual=True, norm='none'):
+    def __init__(self, n_hidden, depth, kernel, residual=True, norm='none', out_proj=True):
         super().__init__()
         self.residual = residual
         pad = kernel // 2
@@ -250,7 +252,8 @@ class ContextCNN(nn.Module):
                 _norm(),
                 nn.ReLU(),
             ))
-        self.out = nn.Conv2d(n_hidden, n_hidden, 1)   # final 1×1 linear projection
+        # final 1×1 linear projection (optional via --no_out_proj; Identity = passthrough)
+        self.out = nn.Conv2d(n_hidden, n_hidden, 1) if out_proj else nn.Identity()
 
     def forward(self, x):
         for layer in self.layers:
@@ -329,7 +332,8 @@ class VLAModel(nn.Module):
     --cond. Absent modalities (None) contribute zeros so concat width is fixed."""
     def __init__(self, n_hidden, depth, kernel, S, residual, cond,
                  use_audio, use_image, c_audio, n_mels, mel_hop, work_sr,
-                 c_text=None, rate=1, n_layers=1, norm='none', state_norm='none'):
+                 c_text=None, rate=1, n_layers=1, norm='none', state_norm='none',
+                 out_proj=True):
         super().__init__()
         self.S          = S
         self.n_hidden   = n_hidden
@@ -343,7 +347,8 @@ class VLAModel(nn.Module):
         self.state_norm = state_norm
 
         self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
-        self.context   = ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm)
+        self.context   = ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm,
+                                    out_proj=out_proj)
         self.decoder   = DecoderCNN(n_hidden, S)
 
         self.audio_encoder = MelAudioEncoder(S, c_audio, n_mels, mel_hop, work_sr) if use_audio else None
@@ -369,7 +374,8 @@ class VLAModel(nn.Module):
         # state_dict is byte-identical to the original (old checkpoints still load).
         if self.n_layers > 1:
             self.deep_context = nn.ModuleList(
-                ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm)
+                ContextCNN(n_hidden, depth, kernel, residual=residual, norm=norm,
+                           out_proj=out_proj)
                 for _ in range(self.n_layers - 1))
             if cond == 'add':
                 self.deep_proj = nn.ModuleList(
@@ -1105,6 +1111,7 @@ model = VLAModel(
     work_sr   = args.audio_work_sr,
     norm      = args.norm,
     state_norm= args.state_norm,
+    out_proj  = args.out_proj,
 )
 
 if _loaded_ckpt is not None:
