@@ -74,9 +74,11 @@ parser.add_argument('--momentum',      default=0.0,   type=float,
                     help='SGD momentum (--opt sgd); replaces beta1 for SGD')
 parser.add_argument('--weight_decay',  default=0.01,  type=float)
 parser.add_argument('--period',        default=10000, type=int,
-                    help='LinearLR ramp length (steps) from start_factor*lr to lr')
+                    help='LinearLR ramp length (steps) from start_factor*lr to end_factor*lr')
 parser.add_argument('--start_factor',  default=0.01,  type=float,
                     help='LinearLR initial lr multiplier')
+parser.add_argument('--end_factor',    default=1.0,   type=float,
+                    help='LinearLR final lr multiplier (after --period steps)')
 # I/O
 parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
@@ -763,7 +765,7 @@ elif args.opt == 'rms':
 # ── scheduler ─────────────────────────────────────────────────────────────────
 
 scheduler = torch.optim.lr_scheduler.LinearLR(
-    optimizer, start_factor=args.start_factor, end_factor=1.0, total_iters=args.period)
+    optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
 
 # ── data thread ───────────────────────────────────────────────────────────────
 
