@@ -47,10 +47,6 @@ parser.add_argument('--n_layers',      default=1,     type=int,
                          '1 = original single-layer behavior')
 parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
-parser.add_argument('--residual',      default=False, action=argparse.BooleanOptionalAction,
-                    help='per-layer residual x = 0.5*x + layer(x) in ContextCNN (default off; --residual to enable)')
-parser.add_argument('--out_proj',      default=False, action=argparse.BooleanOptionalAction,
-                    help='final 1×1 linear projection in ContextCNN (default off/passthrough; --out_proj to enable)')
 # training
 parser.add_argument('--dataset',       default='tiny',
                     help='tiny | c4 | web | brt')
@@ -62,23 +58,40 @@ parser.add_argument('--max_clip_steps', default=None, type=int,
                     help='truncate each clip to this many steps (token-balance long clips; '
                          'for webvid the caption is re-spread over the capped length)')
 parser.add_argument('--streaming',     default=False, action='store_true')
+parser.add_argument('--shards',        default=None,  type=int,
+                    help='non-streaming: load only the first N parquet shards of the dataset '
+                         '(skips most of the slow "Loading dataset shards" step for large '
+                         'corpora like web/openwebtext); ignored with --streaming or if the '
+                         'repo is not parquet')
 parser.add_argument('--batch',         default=32,    type=int)
 parser.add_argument('--workers',       default=12,    type=int,
                     help='parallel clip-builder threads (decode/download); raise for cc3m image streaming')
 parser.add_argument('--steps',         default=None,  type=int)
-parser.add_argument('--learning_rate', default=3e-4,  type=float)
-parser.add_argument('--opt',           default='adamw')
-parser.add_argument('--beta1',         default=0.9,   type=float)
-parser.add_argument('--beta2',         default=0.95,  type=float)
+parser.add_argument('--opt',           default='sgd',
+                    choices=['sgd', 'rmsprop', 'rprop', 'adagrad', 'adamw'],
+                    help='training optimizer')
 parser.add_argument('--momentum',      default=0.0,   type=float,
-                    help='SGD momentum (--opt sgd); replaces beta1 for SGD')
-parser.add_argument('--weight_decay',  default=0.01,  type=float)
-parser.add_argument('--period',        default=10000, type=int,
-                    help='LinearLR ramp length (steps) from start_factor*lr to end_factor*lr')
-parser.add_argument('--start_factor',  default=0.01,  type=float,
-                    help='LinearLR initial lr multiplier')
-parser.add_argument('--end_factor',    default=1.0,   type=float,
-                    help='LinearLR final lr multiplier (after --period steps)')
+                    help='momentum (--opt sgd/rmsprop; wired to beta2 for adamw; '
+                         'ignored by rprop/adagrad)')
+parser.add_argument('--weight_decay',  default=0.0,   type=float,
+                    help='L2 weight decay (--opt sgd/rmsprop/adagrad; ignored by rprop)')
+# learning rate: all --schedule modes are driven by this one set. lr_max is the peak
+# (and the optimizer base lr); lr_min is the floor; lr_warmup / lr_period are step counts.
+parser.add_argument('--schedule',      default='const',
+                    choices=['const', 'linear', 'triangle', 'cosine'],
+                    help='lr schedule: "const" (fixed --lr_max), "linear" (ramp --lr_min->'
+                         '--lr_max over --lr_period, then hold), "triangle" (ramp --lr_min->'
+                         '--lr_max over --lr_warmup, then --lr_max->--lr_min over --lr_period) '
+                         'or "cosine" (cyclic --lr_min<->--lr_max, --lr_period steps/cycle)')
+parser.add_argument('--lr_min',        default=1e-6,  type=float,
+                    help='minimum / floor learning rate (linear|triangle|cosine)')
+parser.add_argument('--lr_max',        default=3e-4,  type=float,
+                    help='peak learning rate; also the constant lr for --schedule const '
+                         'and the optimizer base lr')
+parser.add_argument('--lr_warmup',     default=1000,  type=int,
+                    help='ramp-up length in steps (triangle)')
+parser.add_argument('--lr_period',     default=10000, type=int,
+                    help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle')
 # I/O
 parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
@@ -122,20 +135,16 @@ _mix = _parse_mix(args.mix)
 
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel',
-              'residual', 'out_proj')
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel')
 
 _loaded_ckpt = None
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
-    if isinstance(_loaded_ckpt, dict) and 'saved_args' in _loaded_ckpt:
-        _saved = _loaded_ckpt['saved_args']
-        for _k in _ARCH_ARGS:
-            if _k in _saved:
-                setattr(args, _k, _saved[_k])
+    for _k in _ARCH_ARGS:        # rebuild the model with the architecture it was trained with
+        setattr(args, _k, _loaded_ckpt['saved_args'][_k])
 
-if args.c_text is None:          # default token width to n_hidden (back-compat: old
-    args.c_text = args.n_hidden  # checkpoints have no c_text key, so tok_embed stays n_hidden)
+if args.c_text is None:          # default token embedding width to n_hidden
+    args.c_text = args.n_hidden
 
 # ── log / device / seed ───────────────────────────────────────────────────────
 
@@ -160,26 +169,22 @@ with open(args.log, 'a') as f:
 # ── model ─────────────────────────────────────────────────────────────────────
 
 class ContextCNN(nn.Module):
-    """DFF state update: a stack of conv+ReLU blocks. With --residual:
-    x = 0.5*x + layer(x) per block; otherwise a plain chain. An optional final
-    1×1 linear projection (--out_proj) follows.
+    """DFF state update: a plain chain of conv+batchnorm+ReLU blocks.
     Input:  [B, n_hidden, S, S]
     Output: [B, n_hidden, S, S]
     """
-    def __init__(self, n_hidden, depth, kernel, residual=True, out_proj=False):
+    def __init__(self, n_hidden, depth, kernel):
         super().__init__()
-        self.residual = residual
         pad = kernel // 2
         self.layers = nn.ModuleList(
-            nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel, padding=pad), nn.ReLU())
+            nn.Sequential(nn.Conv2d(n_hidden, n_hidden, kernel, padding=pad),
+                          nn.BatchNorm2d(n_hidden, affine=False), nn.ReLU())
             for _ in range(depth))
-        # optional final 1×1 linear projection (--out_proj); Identity = passthrough
-        self.out = nn.Conv2d(n_hidden, n_hidden, 1) if out_proj else nn.Identity()
 
     def forward(self, x):
         for layer in self.layers:
-            x = 0.5 * x + layer(x) if self.residual else layer(x)
-        return self.out(x)
+            x = layer(x)
+        return x
 
 
 class DecoderCNN(nn.Module):
@@ -202,8 +207,8 @@ class VLAModel(nn.Module):
     per-layer DFF state; ContextCNN updates the state and the decoder reads it out
     to next-token logits. n_layers stacks (ContextCNN + feedback) units in series,
     each carrying its own DFF state."""
-    def __init__(self, n_hidden, depth, kernel, S, residual,
-                 c_text=None, n_layers=1, out_proj=False):
+    def __init__(self, n_hidden, depth, kernel, S,
+                 c_text=None, n_layers=1):
         super().__init__()
         self.S          = S
         self.n_hidden   = n_hidden
@@ -211,7 +216,7 @@ class VLAModel(nn.Module):
         self.n_layers   = max(1, n_layers)    # stacked (ContextCNN + feedback) layers (see --n_layers)
 
         self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
-        self.context   = ContextCNN(n_hidden, depth, kernel, residual=residual, out_proj=out_proj)
+        self.context   = ContextCNN(n_hidden, depth, kernel)
         self.decoder   = DecoderCNN(n_hidden, S)
         # token grid (c_text) → n_hidden, summed into the DFF state
         self.text_proj = nn.Conv2d(self.c_text, n_hidden, 1)
@@ -222,7 +227,7 @@ class VLAModel(nn.Module):
         # byte-identical to the single-layer model.
         if self.n_layers > 1:
             self.deep_context = nn.ModuleList(
-                ContextCNN(n_hidden, depth, kernel, residual=residual, out_proj=out_proj)
+                ContextCNN(n_hidden, depth, kernel)
                 for _ in range(self.n_layers - 1))
             self.deep_proj = nn.ModuleList(
                 nn.Conv2d(n_hidden, n_hidden, 1) for _ in range(self.n_layers - 1))
@@ -242,22 +247,16 @@ class VLAModel(nn.Module):
         tok = self.tok_embed(byte_idx)                             # [B, c_text]
         return tok.view(B, self.c_text, 1, 1).expand(-1, -1, self.S, self.S)
 
-    def _norm_state(self, x):
-        """RMS-normalize the recurrent state each step (bounds magnitude, prevents
-        the unbounded DFF growth that otherwise NaNs long runs)."""
-        rms = x.pow(2).mean(dim=(1, 2, 3), keepdim=True).sqrt()
-        return x / (rms + 1e-5)
-
     def _layers(self, dff, tok_grid):
         """Run the stack of n_layers (ContextCNN + feedback) units once.
         dff: [B, n_layers, n_hidden, S, S]. Layer 0 takes the token injection; each
         deeper layer takes the previous layer's output summed with its own DFF state.
         Returns (new_dff_stack [B, n_layers, ...], last_layer_output [B, n_hidden, S, S]).
         No detach here — the caller detaches the returned stack to bound the time horizon."""
-        o = self._norm_state(self.context(dff[:, 0] + self.text_proj(tok_grid)))
+        o = self.context(dff[:, 0] + self.text_proj(tok_grid))
         outs = [o]
         for li in range(self.n_layers - 1):
-            o = self._norm_state(self.deep_context[li](dff[:, li + 1] + self.deep_proj[li](o)))
+            o = self.deep_context[li](dff[:, li + 1] + self.deep_proj[li](o))
             outs.append(o)
         return torch.stack(outs, dim=1), o
 
@@ -379,12 +378,41 @@ def _split_for_name(name):
     return _TEXT_DATASETS[name][2] if name in _TEXT_DATASETS else 'train'
 
 
-def _init_one_dataset(name, streaming):
+def _shard_files(hf, cfg, n):
+    """First n train parquet shard paths in dataset repo `hf` (config subdir `cfg` if the
+    repo is multi-config). Empty list if the repo isn't parquet-based (e.g. json/script)."""
+    from huggingface_hub import HfApi
+    sib = [s.rfilename for s in HfApi().repo_info(hf, repo_type='dataset').siblings]
+    par = sorted(f for f in sib if f.endswith('.parquet') and 'train' in f)
+    if cfg:                                       # multi-config repo: keep only this config
+        par = [f for f in par if f'/{cfg}/' in f or f.startswith(f'{cfg}/')]
+    return par[:n]
+
+
+def _init_one_dataset(name, streaming, shards=None):
     from datasets import load_dataset
     if name not in _TEXT_DATASETS:
         raise ValueError(f'unknown dataset: {name}')
     hf, cfg, _, _ = _TEXT_DATASETS[name]
-    loader = lambda dlc: load_dataset(hf, cfg, streaming=streaming, download_config=dlc)
+
+    # --shards: restrict a non-streaming load to the first N parquet shards via data_files,
+    # so datasets only resolves/reads those files instead of the whole repo.
+    data_files = None
+    if not streaming and shards:
+        files = _shard_files(hf, cfg, shards)
+        if files:
+            print(f'{name}: --shards {shards} -> loading {len(files)} parquet shard(s)')
+            data_files = {'train': files}
+        else:
+            print(f'{name}: --shards set but no parquet shards found; loading full dataset')
+
+    if data_files is not None:
+        # no_checks: skip the split-size verification, which would fail since we load only
+        # a subset of the repo's shards (recorded rows != the repo's recorded full split).
+        loader = lambda dlc: load_dataset(hf, data_files=data_files, download_config=dlc,
+                                          verification_mode='no_checks')
+    else:
+        loader = lambda dlc: load_dataset(hf, cfg, streaming=streaming, download_config=dlc)
 
     # Non-streaming eagerly resolves every shard (large corpora have thousands), which
     # can blow past HF's 5000-requests/5-min limit -> 429. Throttle the download workers
@@ -544,10 +572,10 @@ else:
     print('loading dataset...')
     if _mix is not None:
         _ds_names  = sorted(set(_mix[0]))
-        hf_dataset = {n: _init_one_dataset(n, args.streaming) for n in _ds_names}
+        hf_dataset = {n: _init_one_dataset(n, args.streaming, args.shards) for n in _ds_names}
         print('mix:', ', '.join(f'{n}:{w:.3f}' for n, w in zip(_mix[0], _mix[1])))
     else:
-        hf_dataset = {args.dataset: _init_one_dataset(args.dataset, args.streaming)}
+        hf_dataset = {args.dataset: _init_one_dataset(args.dataset, args.streaming, args.shards)}
     print('dataset ready')
 
 # ── model instantiation ───────────────────────────────────────────────────────
@@ -557,16 +585,12 @@ model = VLAModel(
     depth     = args.depth,
     kernel    = args.kernel,
     S         = args.context,
-    residual  = args.residual,
     c_text    = args.c_text,
     n_layers  = args.n_layers,
-    out_proj  = args.out_proj,
 )
 
 if _loaded_ckpt is not None:
-    _sd = _loaded_ckpt['state_dict'] if isinstance(_loaded_ckpt, dict) and 'state_dict' in _loaded_ckpt \
-          else _loaded_ckpt
-    model.load_state_dict(_sd)
+    model.load_state_dict(_loaded_ckpt['state_dict'])
     del _loaded_ckpt
 
 _dff_shape = (1, args.n_hidden, args.context, args.context)
@@ -751,21 +775,50 @@ if args.vis:
 
 _trainable = [p for p in model.parameters() if p.requires_grad]
 
-if args.opt == 'adamw':
-    optimizer = torch.optim.AdamW(_trainable, lr=args.learning_rate,
-                                  betas=(args.beta1, args.beta2),
-                                  weight_decay=args.weight_decay)
-elif args.opt == 'sgd':
-    optimizer = torch.optim.SGD(_trainable, lr=args.learning_rate,
-                                momentum=args.momentum)
-elif args.opt == 'rms':
-    optimizer = torch.optim.RMSprop(_trainable, lr=args.learning_rate,
+# Route lr/weight_decay/momentum to each optimizer's supported knobs: Rprop takes
+# neither weight_decay nor momentum; Adagrad takes weight_decay but no momentum.
+if args.opt == 'sgd':
+    optimizer = torch.optim.SGD(_trainable, lr=args.lr_max,
+                                momentum=args.momentum, weight_decay=args.weight_decay)
+elif args.opt == 'rmsprop':
+    optimizer = torch.optim.RMSprop(_trainable, lr=args.lr_max,
+                                    momentum=args.momentum, weight_decay=args.weight_decay, centered=True)
+elif args.opt == 'rprop':
+    optimizer = torch.optim.Rprop(_trainable, lr=args.lr_max)
+elif args.opt == 'adagrad':
+    optimizer = torch.optim.Adagrad(_trainable, lr=args.lr_max,
                                     weight_decay=args.weight_decay)
+elif args.opt == 'adamw':
+    # --momentum drives beta2 (second-moment decay); beta1 fixed at 0.9.
+    optimizer = torch.optim.AdamW(_trainable, lr=args.lr_max,
+                                  betas=(0.9, args.momentum),
+                                  weight_decay=args.weight_decay)
 
 # ── scheduler ─────────────────────────────────────────────────────────────────
+# Every --schedule oscillates between --lr_min and --lr_max. LambdaLR multiplies the
+# optimizer base lr (--lr_max), so we express the absolute lr as a factor relative to it.
+_lo, _hi = args.lr_min, args.lr_max
+_warm    = max(1, args.lr_warmup)
+_period  = max(1, args.lr_period)
 
-scheduler = torch.optim.lr_scheduler.LinearLR(
-    optimizer, start_factor=args.start_factor, end_factor=args.end_factor, total_iters=args.period)
+def _lr_factor(step):
+    if args.schedule == 'const':                       # fixed lr_max
+        lr = _hi
+    elif args.schedule == 'linear':                    # ramp lr_min -> lr_max over lr_period, then hold
+        lr = _lo + (_hi - _lo) * min(step / _period, 1.0)
+    elif args.schedule == 'triangle':                  # up over lr_warmup, down over lr_period, then hold lr_min
+        if step < _warm:
+            lr = _lo + (_hi - _lo) * (step / _warm)
+        elif step < _warm + _period:
+            lr = _hi + (_lo - _hi) * ((step - _warm) / _period)
+        else:
+            lr = _lo
+    else:                                              # cosine: cyclic lr_min <-> lr_max, lr_period per cycle
+        phase = (1.0 - math.cos(2.0 * math.pi * (step % _period) / _period)) / 2.0   # 0->1->0
+        lr = _lo + (_hi - _lo) * phase
+    return lr / _hi
+
+scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_factor)
 
 # ── data thread ───────────────────────────────────────────────────────────────
 
@@ -896,7 +949,8 @@ try:
         if (i % args.monitor) == 0:
             dff = model.dff
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
-                 'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f}').format(
+                 'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
+                 'dff_zeros {:8.5f}').format(
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
                 np.mean(garr[-args.monitor:]),
@@ -904,6 +958,7 @@ try:
                 dff.mean().item() if dff is not None else 0.0,
                 dff.std().item()  if dff is not None else 0.0,
                 dff.abs().max().item() if dff is not None else 0.0,
+                (dff == 0).float().mean().item() if dff is not None else 0.0,
             )
             print(s)
             with open(args.log, 'a') as f:
