@@ -52,6 +52,7 @@ parser.add_argument('--batch', help='batch size',default=50, type=int)
 parser.add_argument('--learning_rate', help='',default=0.00001, type=float)
 parser.add_argument('--alt', help='{repl,lite,proj}-{base,batchnorm}',default='free-jumbo')
 parser.add_argument('--proj_depth', help='number of Conv2d+ReLU layers for the proj projector variant',default=4, type=int)
+parser.add_argument('--kernel', help='projection kernel size (odd integer)',default=3, type=int)
 parser.add_argument('--beta1', help='second adamw moment coefficient',default=0.9, type=float)
 parser.add_argument('--beta2', help='second adamw moment coefficient',default=0.999, type=float)
 #parser.add_argument('--freeze', help='freeze embed, lmhead layers',default=False, action='store_true')
@@ -130,7 +131,7 @@ elif args.dataset=='mix':
     hf_columns = ['text','text']
     hf_ratios = [0.1, 0.9]
 
-model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt, proj_depth=args.proj_depth)
+model = models.CNN_LM(args.n_hidden, args.n_embd, args.n_enc, args.n_dec, args.context, args.vocab, args.alt, proj_depth=args.proj_depth, proj_kernel=args.kernel)
 print('vocab_size', model.tokenizer.vocab_size)
 sample_example=''
 num_examples=0
