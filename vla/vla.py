@@ -41,7 +41,7 @@ parser.add_argument('--c_text',        default=1,     type=int,
                     help='token embedding channels (None → n_hidden)')
 parser.add_argument('--depth',         default=7,     type=int,
                     help='ContextCNN conv layer count')
-parser.add_argument('--n_layers',      default=1,     type=int,
+parser.add_argument('--n_layers',      default=3,     type=int,
                     help='stack N (ContextCNN + feedback) recurrent layers in series between '
                          'the thin encoder and decoder; each layer keeps its own DFF state. '
                          '1 = original single-layer behavior')
@@ -60,7 +60,7 @@ parser.add_argument('--shards',        default=None,  type=int,
                          '(skips most of the slow "Loading dataset shards" step for large '
                          'corpora like web/openwebtext); ignored with --streaming or if the '
                          'repo is not parquet')
-parser.add_argument('--batch',         default=32,    type=int)
+parser.add_argument('--batch',         default=100,   type=int)
 parser.add_argument('--workers',       default=12,    type=int,
                     help='parallel clip-builder threads (decode/download); raise for cc3m image streaming')
 parser.add_argument('--run_steps',     default=None,  type=int,
@@ -84,7 +84,7 @@ parser.add_argument('--schedule',      default='const',
                          'or "cosine" (cyclic --lr_min<->--lr_max, --lr_period steps/cycle)')
 parser.add_argument('--lr_min',        default=1e-6,  type=float,
                     help='minimum / floor learning rate (linear|triangle|cosine)')
-parser.add_argument('--lr_max',        default=3e-4,  type=float,
+parser.add_argument('--lr_max',        default=0.001, type=float,
                     help='peak learning rate; also the constant lr for --schedule const '
                          'and the optimizer base lr')
 parser.add_argument('--lr_warmup',     default=1000,  type=int,
@@ -96,7 +96,7 @@ parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
 parser.add_argument('--checkpoint',    default=1000,  type=int)
 parser.add_argument('--log',           default=None)
-parser.add_argument('--monitor',       default=10,    type=int)
+parser.add_argument('--monitor',       default=100,   type=int)
 parser.add_argument('--generate',      default=False, action='store_true',
                     help='one-shot: load checkpoint, generate from START+prompt, print, exit (no dataset/training)')
 parser.add_argument('--n',             default=200,   type=int,

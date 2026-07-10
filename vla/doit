@@ -1,3 +1,24 @@
+python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.001
+
+
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --norm none --batchnorm
+#python vla.py --dataset web --printable --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --norm none --batchnorm
+#python vla.py --mix "brt:0.5,web:0.5" --shards 2 --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.01 --opt sgd --weight_decay 0.0 --momentum 0.0 --norm none
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule cosine --lr_min 0.0001 --lr_max 0.1 --lr_period 100000 --opt sgd --weight_decay 0.0 --momentum 0.0 --norm none
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.01 --opt rmsprop --weight_decay 0.0 --momentum 0.0 --charfreq
+
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 0.01 --start_factor 0.01 --period 100000 --end_factor 1.0 --opt rmsprop --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.0001 --opt rmsprop --weight_decay 0.0 --momentum 0.0 --charfreq --activation selu
+
+#python vla.py --mix "brt:0.5,web:0.5" --shards 10 --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule linear --learning_rate 1.0 --start_factor 1.0 --period 100000 --end_factor 0.001 --opt rmsprop --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule triangle --lr_start 0.00001 --lr_t1 50000 --lr_peak 1.0 --lr_t2 50000 --lr_end 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 1.0 --start_factor 1.0 --period 100000 --end_factor 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule triangle --lr_start 0.001 --lr_t1 10000 --lr_peak 1.0 --lr_t2 10000 --lr_end 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --charfreq
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 1.0 --start_factor 1.0 --period 1000000 --end_factor 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt rms --weight_decay 0.0
+
+
 # vla.py — recurrent CNN byte-level language model (text-only core)
 #
 # New arg set (post text-only cleanup). Removed: --no_image/--no_audio, --cond,
@@ -8,7 +29,7 @@
 # residual/out_proj) restore from the checkpoint's saved_args on --load.
 
 # active run: brt+web mix, 3 layers, 7x7x512 state, c_text=1, adamw
-python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9
 
 # resume from a checkpoint (arch restored from saved_args)
 #python vla.py --mix "brt:0.5,web:0.5" --batch 100 --monitor 100 --checkpoint 1000 --learning_rate 0.00001 --period 10000 --start_factor 1.0 --opt adamw --weight_decay 0.0 --beta2 0.9 --load checkpoint.pt
