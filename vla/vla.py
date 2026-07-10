@@ -37,8 +37,8 @@ parser.add_argument('--context',       default=7,     type=int,
                     help='spatial size S of the DFF grid (S×S)')
 parser.add_argument('--n_hidden',      default=512,   type=int,
                     help='ContextCNN channel depth')
-parser.add_argument('--c_text',        default=None,  type=int,
-                    help='token embedding channels; default = n_hidden')
+parser.add_argument('--c_text',        default=1,     type=int,
+                    help='token embedding channels (None → n_hidden)')
 parser.add_argument('--depth',         default=7,     type=int,
                     help='ContextCNN conv layer count')
 parser.add_argument('--n_layers',      default=1,     type=int,
@@ -54,9 +54,6 @@ parser.add_argument('--mix',           default=None,
                     help='joint multi-dataset training, "name:weight,..." e.g. '
                          '"brt:0.5,web:0.5"; overrides --dataset, samples one dataset per clip '
                          '(token-proportional)')
-parser.add_argument('--max_clip_steps', default=None, type=int,
-                    help='truncate each clip to this many steps (token-balance long clips; '
-                         'for webvid the caption is re-spread over the capped length)')
 parser.add_argument('--streaming',     default=False, action='store_true')
 parser.add_argument('--shards',        default=None,  type=int,
                     help='non-streaming: load only the first N parquet shards of the dataset '
@@ -66,7 +63,9 @@ parser.add_argument('--shards',        default=None,  type=int,
 parser.add_argument('--batch',         default=32,    type=int)
 parser.add_argument('--workers',       default=12,    type=int,
                     help='parallel clip-builder threads (decode/download); raise for cc3m image streaming')
-parser.add_argument('--steps',         default=None,  type=int)
+parser.add_argument('--run_steps',     default=None,  type=int,
+                    help='stop the run after this many gradient steps (None = run indefinitely); '
+                         'handy for fixed-length sweeps')
 parser.add_argument('--opt',           default='sgd',
                     choices=['sgd', 'rmsprop', 'rprop', 'adagrad', 'adamw'],
                     help='training optimizer')
@@ -355,11 +354,9 @@ def _text_to_bytes(text):
     return list(text.encode('utf-8', errors='replace'))
 
 
-def clip_text(text, max_steps=None):
+def clip_text(text):
     """One step per byte: input/target are consecutive bytes of [START]+text+[END]."""
     full = [START] + _text_to_bytes(text) + [END]
-    if max_steps is not None:
-        full = full[:max_steps + 1]   # n_steps = len(full) - 1
     steps = [(full[i], full[i + 1]) for i in range(len(full) - 1)]
     return steps, text
 
@@ -471,7 +468,6 @@ def worker(stop, q, datasets, args, mix=None):
         names, weights = [args.dataset], [1.0]
     else:
         names, weights = mix
-    M       = args.max_clip_steps
     _iters  = {}
     _locks  = {}
     _epochs = {}
@@ -493,7 +489,7 @@ def worker(stop, q, datasets, args, mix=None):
 
     def _build_clip(name, example):
         col = _TEXT_DATASETS[name][3]
-        return clip_text(example.get(col, example.get('text', '')), max_steps=M)
+        return clip_text(example.get(col, example.get('text', '')))
 
     slots = [_ClipSlot() for _ in range(args.batch)]
 
@@ -766,8 +762,6 @@ if args.vis:
         _vis_fig.canvas.draw()        # synchronous: render every step (draw_idle coalesces
         _vis_fig.canvas.flush_events()  # frames when sleep blocks the GUI loop → skips steps)
         time.sleep(args.delay)
-        if args.steps is not None and _nstep >= args.steps:
-            break
 
     raise SystemExit(0)
 
@@ -974,7 +968,7 @@ try:
         optimizer.zero_grad()
         i += 1
 
-        if args.steps is not None and i >= args.steps:
+        if args.run_steps is not None and i >= args.run_steps:
             break
 
 except KeyboardInterrupt:
