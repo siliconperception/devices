@@ -641,16 +641,19 @@ def _vc(b):
 if args.vis:
     plt.style.use('dark_background')
     plt.ion()
-    _vis_fig, _vis_axes_grid = plt.subplots(1, 2, figsize=(8, 4))
+    _vis_fig, _vis_axes_grid = plt.subplots(1, 3, figsize=(12, 4))
     _vis_fig.subplots_adjust(top=0.78, bottom=0.10, left=0.04, right=0.98,
                               hspace=0.1, wspace=0.08)
-    _vis_ax_dff, _vis_ax_prob = _vis_axes_grid
+    _vis_ax_dff, _vis_ax_zero, _vis_ax_prob = _vis_axes_grid
     _vis_ax_dff.set_title('DFF std',       fontsize=8, pad=2)
+    _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
     _vis_ax_prob.set_title('P(next token)', fontsize=8, pad=2)
     # row/column dimension labels (e.g. "7"): DFF state is S×S, prob is 16×16 (256 bytes).
     _vis_ax_dff.set_xlabel(str(model.S),  fontsize=7); _vis_ax_dff.set_ylabel(str(model.S),  fontsize=7)
+    _vis_ax_zero.set_xlabel(str(model.S), fontsize=7); _vis_ax_zero.set_ylabel(str(model.S), fontsize=7)
     _vis_ax_prob.set_xlabel('16',         fontsize=7); _vis_ax_prob.set_ylabel('16',         fontsize=7)
     _vis_img_dff  = None
+    _vis_img_zero = None
     _vis_img_prob = None
     _vis_dff_vmax = None   # slow-tracking color scale for the DFF-std panel (see set_clim below)
     _vis_header   = _vis_fig.text(0.01, 0.99, _vis_stats_line,
@@ -719,6 +722,8 @@ if args.vis:
         # ── render ──────────────────────────────────────────────────────────
         # DFF-std panel shows the last layer's state (the one feeding the decoder).
         dff_std_map = new_ctx[0].cpu().std(dim=0).numpy()           # [S, S]
+        # per-location sparsity: how many of the n_hidden channels are exactly 0 here
+        zero_map    = (new_ctx[0] == 0).sum(dim=0).cpu().numpy()     # [S, S], 0..n_hidden
         prob_img    = prob.detach().cpu().numpy().reshape(16, 16)    # 256 bytes → 16×16
         _vis_header.set_text(
             ('step {:8d}  layers {:d}  dff_std {:6.4f}  dff_max {:7.3f}  p_max {:5.3f}  T {:.2f}').format(
@@ -735,6 +740,14 @@ if args.vis:
         _fmax = float(dff_std_map.max())
         _vis_dff_vmax = _fmax if _vis_dff_vmax is None else max(_fmax, 0.98 * _vis_dff_vmax)
         _vis_img_dff.set_clim(0.0, _vis_dff_vmax or 1e-9)
+
+        # fixed 0..n_hidden scale: absolute zero-count is more readable than an autoscale
+        if _vis_img_zero is None:
+            _vis_img_zero = _vis_ax_zero.matshow(zero_map, cmap=args.cmap,
+                                                 vmin=0, vmax=model.n_hidden)
+            _vis_ax_zero.set_xticks([]); _vis_ax_zero.set_yticks([])
+        else:
+            _vis_img_zero.set_data(zero_map)
 
         if _vis_img_prob is None:
             _vis_img_prob = _vis_ax_prob.matshow(prob_img, cmap=args.cmap, vmin=0, vmax=1)

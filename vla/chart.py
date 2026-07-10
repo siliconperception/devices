@@ -106,17 +106,13 @@ loss_mean = np.convolve(loss, weights, mode='same')
 
 #fig = plt.figure(figsize=(10,40))
 plt.style.use('dark_background')
-fig = plt.figure(figsize=(12, 14))
+# --verbose shows all six panels; otherwise just loss and grad
+nplots = 6 if args.verbose else 2
+fig = plt.figure(figsize=(12, 14 if args.verbose else 6))
 if title:
     fig.suptitle(title)
-nplots=6
 ax1 = fig.add_subplot(nplots,1,1)
 ax2 = fig.add_subplot(nplots,1,2, sharex=ax1)
-ax3 = fig.add_subplot(nplots,1,3, sharex=ax1)
-ax3b = ax3.twinx()
-ax4 = fig.add_subplot(nplots,1,4, sharex=ax1)
-ax5 = fig.add_subplot(nplots,1,5, sharex=ax1)
-ax6 = fig.add_subplot(nplots,1,6, sharex=ax1)
 #ax1.set_ylim(bottom=0, top=np.log(50257))
 ax1.set_ylim(bottom=0, top=np.log(256))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
@@ -128,28 +124,38 @@ if args.grad_lim > 0 and grad.size:
     _gtop = float(np.max(grad[-args.grad_lim:]))
     if _gtop > 0:
         ax2.set_ylim(bottom=0, top=_gtop / 0.8)
-#ax3.set_ylim(bottom=0, top=20)
-#ax3b.set_ylim(bottom=-1, top=1)
-ax3.plot(step, std, '-r', linewidth=1.0,alpha=0.5)
-ax3b.plot(step, mean, '-b', linewidth=1.0,alpha=0.5)
-ax4.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.7f'))
-ax4.plot(step, lr, '-c', linewidth=2.0,alpha=0.5)
-ax5.plot(step, dmax, '-m', linewidth=2.0,alpha=0.5)
-ax6.set_ylim(bottom=0, top=1)
-ax6.plot(step, zero, '-g', linewidth=2.0,alpha=0.5)
 
 ax1.set_ylabel('loss', color='w')
 ax2.set_ylabel('grad', color='y')
-ax3.set_ylabel('std', color='r')
-ax3b.set_ylabel('mean', color='b')
-ax4.set_ylabel('lr', color='c')
-ax5.set_ylabel('dff_max', color='m')
-ax6.set_ylabel('sparsity', color='g')
+
+axes = [ax1, ax2]
+if args.verbose:
+    ax3 = fig.add_subplot(nplots,1,3, sharex=ax1)
+    ax3b = ax3.twinx()
+    ax4 = fig.add_subplot(nplots,1,4, sharex=ax1)
+    ax5 = fig.add_subplot(nplots,1,5, sharex=ax1)
+    ax6 = fig.add_subplot(nplots,1,6, sharex=ax1)
+    #ax3.set_ylim(bottom=0, top=20)
+    #ax3b.set_ylim(bottom=-1, top=1)
+    ax3.plot(step, std, '-r', linewidth=1.0,alpha=0.5)
+    ax3b.plot(step, mean, '-b', linewidth=1.0,alpha=0.5)
+    ax4.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.7f'))
+    ax4.plot(step, lr, '-c', linewidth=2.0,alpha=0.5)
+    ax5.plot(step, dmax, '-m', linewidth=2.0,alpha=0.5)
+    ax6.set_ylim(bottom=0, top=1)
+    ax6.plot(step, zero, '-g', linewidth=2.0,alpha=0.5)
+
+    ax3.set_ylabel('std', color='r')
+    ax3b.set_ylabel('mean', color='b')
+    ax4.set_ylabel('lr', color='c')
+    ax5.set_ylabel('dff_max', color='m')
+    ax6.set_ylabel('sparsity', color='g')
+    axes += [ax3, ax3b, ax4, ax5, ax6]
 
 # only the bottom subplot carries the shared x-axis label and tick labels
-for ax in (ax1, ax2, ax3, ax3b, ax4, ax5):
+for ax in axes[:-1]:
     ax.tick_params(labelbottom=False)
-ax6.set_xlabel('batch')
+axes[-1].set_xlabel('batch')
 
 fig.tight_layout()
 plt.show()
