@@ -30,7 +30,7 @@ import datetime
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
-parser.add_argument('--grad_lim', default=1000, type=int,
+parser.add_argument('--grad_lim', default=10000, type=int,
                     help='scale the gradient plot y-axis so the last N grad samples fill ~80%% of it (0 = autoscale)')
 parser.add_argument('--verbose', default=False, action='store_true')
 args = parser.parse_args()
@@ -118,7 +118,8 @@ ax1.set_ylim(bottom=0, top=np.log(256))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
 #ax1.plot(step, loss_mean, '-w', linewidth=1,alpha=0.8)
 ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
-ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
+#ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
+ax2.plot(step, grad, '.y', linewidth=0.1,alpha=1.0, markersize=1)
 # scale the grad y-axis so the last --grad_lim samples' peak sits at ~80% of the axis
 if args.grad_lim > 0 and grad.size:
     _gtop = float(np.max(grad[-args.grad_lim:]))
