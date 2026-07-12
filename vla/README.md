@@ -3,6 +3,28 @@
 Stateful recurrent CNN language model. `vla.py` trains it; `chart.py` plots the loss log;
 `doit` is the experiment history.
 
+## HellaSwag evaluation
+
+`--evaluate` scores a checkpoint zero-shot on
+[HellaSwag](https://huggingface.co/datasets/Rowan/hellaswag) and exits — no training
+dataset, no training. Each example is a context plus four candidate endings; the context is
+fed to the model, each ending is then scored by the summed log-probability of its UTF-8
+bytes, and the most likely one is the model's answer. Compare against the leaderboard at
+[rowanzellers.com/hellaswag](https://rowanzellers.com/hellaswag/) — random is 25%.
+
+```bash
+python vla.py --evaluate --load checkpoint.pt                 # validation split (10042 examples)
+python vla.py --evaluate --load checkpoint.pt --limit 500     # quick estimate
+```
+
+Two accuracies are printed, the usual pair for zero-shot LM eval. **acc_norm** is the
+headline: it normalizes by ending length (mean log-prob per byte), so long endings are not
+penalized. **acc** uses the un-normalized total.
+
+`--batch` is examples per batch (each becomes four sequences once the endings fork off) and
+`--monitor` is the progress-print interval. `--split train` scores the train split instead;
+the test split is unlabeled and cannot be scored.
+
 ## Datasets
 
 `--dataset tiny | c4 | web | brt | dolma3`, or `--mix "brt:0.5,web:0.5"` for a

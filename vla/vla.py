@@ -104,6 +104,14 @@ parser.add_argument('--n',             default=200,   type=int,
                     help='tokens to generate per sample')
 parser.add_argument('--prompt',        default='\x02',
                     help='generation prompt (\\x02 = START)')
+parser.add_argument('--evaluate',      default=False, action='store_true',
+                    help='one-shot: load checkpoint, score HellaSwag zero-shot, print accuracy, '
+                         'exit (no training dataset/training)')
+parser.add_argument('--split',         default='validation', choices=['train', 'validation'],
+                    help='--evaluate: HellaSwag split (its test split is unlabeled, so it '
+                         'cannot be scored)')
+parser.add_argument('--limit',         default=None,  type=int,
+                    help='--evaluate: score only the first N examples (None = the whole split)')
 parser.add_argument('--seed',          default=None,  type=int)
 parser.add_argument('--device',        default=None)
 parser.add_argument('--vis',           default=False, action='store_true',
@@ -149,7 +157,7 @@ if args.c_text is None:          # default token embedding width to n_hidden
 # ── log / device / seed ───────────────────────────────────────────────────────
 
 if args.log is None:
-    if args.generate or args.vis:        # one-shot generate / visualizer: don't create a log file
+    if args.generate or args.vis or args.evaluate:   # one-shot modes: don't create a log file
         args.log = os.devnull
     else:
         os.makedirs('log', exist_ok=True)
@@ -588,9 +596,10 @@ def worker(stop, q, datasets, args, mix=None):
 
 # ── dataset loading (before CUDA init) ───────────────────────────────────────
 
-if args.vis or args.generate:
-    hf_dataset = None                 # --vis/--generate run from the prompt token —
-                                      # neither needs a training dataset
+if args.vis or args.generate or args.evaluate:
+    hf_dataset = None                 # one-shot modes: --vis/--generate run from the prompt
+                                      # token, --evaluate loads HellaSwag itself — none of
+                                      # them needs a training dataset
 else:
     print('loading dataset...')
     if _mix is not None:
@@ -648,6 +657,113 @@ if args.generate:
     prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
     out    = model.generate(prompt, args.n)
     print(args.prompt + bytes(out).decode('utf-8', errors='replace'))
+    raise SystemExit(0)
+
+# ── hellaswag evaluation ──────────────────────────────────────────────────────
+# HellaSwag (https://huggingface.co/datasets/Rowan/hellaswag) gives a context and four
+# candidate endings, one of which is correct. A language model is scored zero-shot by
+# completion likelihood: feed the context, then score each ending and pick the most likely.
+# Accuracy compares against https://rowanzellers.com/hellaswag/ (random = 25%).
+#
+# This is a byte model, so "scoring an ending" means summing the log-probability of each of
+# its UTF-8 bytes, teacher-forced, with the DFF state carried over from the context. Two
+# scores are reported, the usual pair for zero-shot LM eval:
+#
+#   acc_norm -- mean log-prob per ending byte (length-normalized). The headline number: it
+#               does not penalize long endings, and is what zero-shot results are quoted with.
+#   acc      -- total log-prob of the ending (un-normalized).
+
+def _hs_render(example):
+    """Rendered the way zero-shot HellaSwag is rendered for a left-to-right LM:
+    prompt = ctx, completion = ' ' + ending. Bytes, not tokens."""
+    ctx     = [START] + list(example['ctx'].encode('utf-8', errors='replace'))
+    endings = [list((' ' + e).encode('utf-8', errors='replace')) for e in example['endings']]
+    return ctx, endings
+
+
+def _hs_pad(seqs, device):
+    """Right-pad byte lists to a [B, Lmax] long tensor (+ their [B] lengths)."""
+    lens = torch.tensor([len(s) for s in seqs], dtype=torch.long, device=device)
+    out  = torch.full((len(seqs), int(lens.max())), NULL, dtype=torch.long, device=device)
+    for i, s in enumerate(seqs):
+        out[i, :len(s)] = torch.tensor(s, dtype=torch.long, device=device)
+    return out, lens
+
+
+@torch.no_grad()
+def _hs_score(model, examples, device):
+    """Log-prob of each ending under the model.
+    Returns (sum_lp [E, 4], n_bytes [E, 4]): total ending log-prob and its byte count."""
+    E        = len(examples)
+    rendered = [_hs_render(e) for e in examples]
+
+    # Context phase: run each context once, freezing the DFF state of sequences that have
+    # already ended, so every example finishes on the step that consumes its own last
+    # context byte. `logits` then predicts the first byte of the ending.
+    ctx, ctx_len = _hs_pad([c for c, _ in rendered], device)
+    dff    = torch.zeros(E, model.n_layers, model.n_hidden, model.S, model.S, device=device)
+    logits = torch.zeros(E, 256, device=device)
+    for t in range(int(ctx_len.max())):
+        live = (t < ctx_len).view(E, 1, 1, 1, 1)
+        stack, out = model._layers(dff, model._tok_grid(ctx[:, t]))
+        dff    = torch.where(live, stack, dff)
+        logits = torch.where(live.view(E, 1), model.decoder(out), logits)
+
+    # Ending phase: fork the context state to the four candidates, so the (long) context is
+    # not recomputed four times. Byte e[t] is scored under the logits produced by everything
+    # before it, then fed in to produce the logits for e[t+1]. Sequences past their end keep
+    # stepping (their state is dead) but contribute nothing: `live` masks them out.
+    end, end_len = _hs_pad([e for _, ends in rendered for e in ends], device)
+    dff    = dff.repeat_interleave(4, dim=0)
+    logits = logits.repeat_interleave(4, dim=0)
+    sum_lp = torch.zeros(4 * E, device=device)
+    for t in range(int(end_len.max())):
+        live    = (t < end_len)
+        logp    = F.log_softmax(logits, dim=-1).gather(1, end[:, t:t + 1]).squeeze(1)
+        sum_lp += torch.where(live, logp, torch.zeros_like(logp))
+        if t + 1 == end.shape[1]:
+            break
+        stack, out  = model._layers(dff, model._tok_grid(end[:, t]))
+        dff, logits = stack, model.decoder(out)
+
+    return sum_lp.view(E, 4), end_len.view(E, 4)
+
+
+if args.evaluate:
+    # one-shot: score the HellaSwag split, print accuracy, exit. --batch is examples per
+    # batch (each becomes 4 sequences in the ending phase), --monitor the progress interval.
+    if args.load is None:
+        print('WARNING: --evaluate without --load is scoring an untrained model')
+    from datasets import load_dataset
+    print(f'loading hellaswag ({args.split})...')
+    hs = load_dataset('Rowan/hellaswag', split=args.split)
+    if args.limit is not None:
+        hs = hs.select(range(min(args.limit, len(hs))))
+    print(f'{len(hs)} examples')
+
+    model.eval()
+    n = hit = hit_norm = 0
+    t0 = time.time()
+
+    for bi in range(0, len(hs), args.batch):
+        batch  = [hs[j] for j in range(bi, min(bi + args.batch, len(hs)))]
+        labels = torch.tensor([int(e['label']) for e in batch], device=args.device)
+
+        sum_lp, n_bytes = _hs_score(model, batch, args.device)
+        avg_lp = sum_lp / n_bytes.clamp(min=1)
+
+        n        += len(batch)
+        hit      += (sum_lp.argmax(dim=1) == labels).sum().item()
+        hit_norm += (avg_lp.argmax(dim=1) == labels).sum().item()
+
+        if (bi % args.monitor) == 0:
+            print(f'{n:6d}/{len(hs)}  acc_norm {hit_norm / n:.4f}  acc {hit / n:.4f}  '
+                  f'({n / (time.time() - t0):.1f} ex/s)', flush=True)
+
+    print(f'\nHellaSwag {args.split}: {n} examples, {time.time() - t0:.0f}s')
+    print(f'  acc_norm  {hit_norm / n:.4f}   ({hit_norm}/{n})   <- length-normalized (headline)')
+    print(f'  acc       {hit / n:.4f}   ({hit}/{n})')
+    print(f'  random    0.2500')
     raise SystemExit(0)
 
 # ── vis setup ─────────────────────────────────────────────────────────────────
