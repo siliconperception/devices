@@ -16,6 +16,7 @@ from torch.nn import functional as F
 import torchinfo
 import numpy as np
 import argparse
+import glob
 import os
 import queue
 import threading
@@ -49,7 +50,7 @@ parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
 # training
 parser.add_argument('--dataset',       default='tiny',
-                    help='tiny | c4 | web | brt')
+                    help='tiny | c4 | web | brt | dolma3')
 parser.add_argument('--mix',           default=None,
                     help='joint multi-dataset training, "name:weight,..." e.g. '
                          '"brt:0.5,web:0.5"; overrides --dataset, samples one dataset per clip '
@@ -364,11 +365,24 @@ def clip_text(text):
 # ── dataset loading ────────────────────────────────────────────────────────────
 
 _TEXT_DATASETS = {
-    'tiny': ('roneneldan/TinyStories', None, 'train', 'text'),
-    'c4':   ('allenai/c4',            'en', 'train', 'text'),
-    'web':  ('Skylion007/openwebtext', None, 'train', 'text'),
-    'brt':  ('allenai/big-reasoning-traces', 'DeepSeek', 'train', 'text'),
+    'tiny':   ('roneneldan/TinyStories', None, 'train', 'text'),
+    'c4':     ('allenai/c4',            'en', 'train', 'text'),
+    'web':    ('Skylion007/openwebtext', None, 'train', 'text'),
+    'brt':    ('allenai/big-reasoning-traces', 'DeepSeek', 'train', 'text'),
+    'dolma3': ('allenai/dolma3_mix-150B-1025', None, 'train', 'text'),
 }
+
+# A dataset prepared on local disk takes precedence over the hub repo. dolma3 must be
+# prepared this way (see dolma3_prep.py): the hub shards are topic-partitioned and
+# per-source schemas differ, so streaming them trains on one topic at a time and loading
+# them non-streaming fails to cast. dolma3_prep.py rewrites the corpus into text-only
+# parquet parts that are each a uniform random sample of the whole corpus.
+_LOCAL_DIRS = {'dolma3': './dolma3_text'}
+
+
+def _local_files(name):
+    d = _LOCAL_DIRS.get(name)
+    return sorted(glob.glob(os.path.join(d, '*.parquet'))) if d else []
 
 
 def _split_for_name(name):
@@ -391,6 +405,19 @@ def _init_one_dataset(name, streaming, shards=None):
     if name not in _TEXT_DATASETS:
         raise ValueError(f'unknown dataset: {name}')
     hf, cfg, _, _ = _TEXT_DATASETS[name]
+
+    # prepared local copy (dolma3_prep.py) wins over the hub repo: no download, and its
+    # parts are pre-shuffled across the whole corpus.
+    local = _local_files(name)
+    if local:
+        if shards:
+            local = local[:shards]
+        print(f'{name}: loading {len(local)} local parquet part(s) from {_LOCAL_DIRS[name]}')
+        return load_dataset('parquet', data_files={'train': local}, streaming=streaming)
+    if name in _LOCAL_DIRS:
+        print(f'{name}: no prepared copy at {_LOCAL_DIRS[name]} -- falling back to the hub '
+              f'repo. Hub shards are topic-partitioned: streaming trains on one topic at a '
+              f'time and non-streaming fails to cast. See dolma3_prep.py')
 
     # --shards: restrict a non-streaming load to the first N parquet shards via data_files,
     # so datasets only resolves/reads those files instead of the whole repo.

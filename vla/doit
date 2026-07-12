@@ -1,4 +1,5 @@
-python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.001
+python vla.py --dataset dolma3 --streaming --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.001
+#python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.001
 
 
 #python vla.py --mix "brt:0.5,web:0.5" --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --schedule const --learning_rate 0.001 --opt sgd --weight_decay 0.0 --momentum 0.0 --norm none --batchnorm
