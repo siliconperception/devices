@@ -1,0 +1,4 @@
+# dolma3 corpus: the downloaded repo (110 GB) and the parquet parts dolma3_prep.py
+# rewrites it into (~110 GB). Both are regenerable, neither belongs in git.
+dolma3/
+dolma3_text/
