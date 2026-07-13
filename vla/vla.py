@@ -114,6 +114,9 @@ parser.add_argument('--limit',         default=None,  type=int,
                     help='--evaluate: score only the first N examples (None = the whole split)')
 parser.add_argument('--seed',          default=None,  type=int)
 parser.add_argument('--device',        default=None)
+parser.add_argument('--verbose',       default=False, action='store_true',
+                    help='print the torchinfo model summaries in --generate/--vis (training '
+                         'and --evaluate always print them, since they are logged)')
 parser.add_argument('--vis',           default=False, action='store_true',
                     help='live text-generation viz (DFF std + P(next token)) from the '
                          'prompt token; no training. Read-only. Press x to exit')
@@ -157,12 +160,18 @@ if args.c_text is None:          # default token embedding width to n_hidden
 # ── log / device / seed ───────────────────────────────────────────────────────
 
 if args.log is None:
-    if args.generate or args.vis or args.evaluate:   # one-shot modes: don't create a log file
+    if args.generate or args.vis:        # one-shot generate / visualizer: don't create a log file
         args.log = os.devnull
     else:
+        # training -> log/log.<date>, --evaluate -> log/eval.<date>, so eval scores are kept
+        # and can be compared across checkpoints. Never reuse a name: two runs started in the
+        # same second would otherwise interleave their lines in one file.
         os.makedirs('log', exist_ok=True)
         date = subprocess.check_output(['/usr/bin/date', '+%Y.%m.%d-%H.%M.%S']).decode().strip()
-        args.log = f'log/log.{date}'
+        stem = f'log/{"eval" if args.evaluate else "log"}.{date}'
+        args.log, n = stem, 1
+        while os.path.exists(args.log):
+            args.log, n = f'{stem}.{n}', n + 1
 if args.device is None:
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 if args.seed is None:
@@ -627,6 +636,10 @@ if _loaded_ckpt is not None:
 
 _dff_shape = (1, args.n_hidden, args.context, args.context)
 def _summ(title, mod, **kw):
+    # --generate/--vis have no log file, so their summaries would only be terminal noise in
+    # front of the sample / the plot window. --verbose asks for them anyway.
+    if (args.generate or args.vis) and not args.verbose:
+        return
     s = str(torchinfo.summary(mod, col_names=['input_size', 'output_size', 'num_params'],
                               verbose=0, **kw))
     block = f'── {title} ──\n{s}'
@@ -732,14 +745,22 @@ def _hs_score(model, examples, device):
 if args.evaluate:
     # one-shot: score the HellaSwag split, print accuracy, exit. --batch is examples per
     # batch (each becomes 4 sequences in the ending phase), --monitor the progress interval.
+    # Everything printed also goes to log/eval.<date> (with the ARGS line already written
+    # there), so a score stays attributable to the checkpoint and split that produced it and
+    # runs can be compared after the fact.
+    def _elog(s):
+        print(s, flush=True)
+        with open(args.log, 'a') as f:
+            print(s, file=f)
+
     if args.load is None:
-        print('WARNING: --evaluate without --load is scoring an untrained model')
+        _elog('WARNING: --evaluate without --load is scoring an untrained model')
     from datasets import load_dataset
-    print(f'loading hellaswag ({args.split})...')
+    _elog(f'loading hellaswag ({args.split})...')
     hs = load_dataset('Rowan/hellaswag', split=args.split)
     if args.limit is not None:
         hs = hs.select(range(min(args.limit, len(hs))))
-    print(f'{len(hs)} examples')
+    _elog(f'EVAL checkpoint {args.load} split {args.split} examples {len(hs)}')
 
     model.eval()
     n = hit = hit_norm = 0
@@ -757,13 +778,14 @@ if args.evaluate:
         hit_norm += (avg_lp.argmax(dim=1) == labels).sum().item()
 
         if (bi % args.monitor) == 0:
-            print(f'{n:6d}/{len(hs)}  acc_norm {hit_norm / n:.4f}  acc {hit / n:.4f}  '
-                  f'({n / (time.time() - t0):.1f} ex/s)', flush=True)
+            _elog(f'{n:6d}/{len(hs)}  acc_norm {hit_norm / n:.4f}  acc {hit / n:.4f}  '
+                  f'({n / (time.time() - t0):.1f} ex/s)')
 
-    print(f'\nHellaSwag {args.split}: {n} examples, {time.time() - t0:.0f}s')
-    print(f'  acc_norm  {hit_norm / n:.4f}   ({hit_norm}/{n})   <- length-normalized (headline)')
-    print(f'  acc       {hit / n:.4f}   ({hit}/{n})')
-    print(f'  random    0.2500')
+    _elog(f'\nHellaSwag {args.split}: {n} examples, {time.time() - t0:.0f}s')
+    _elog(f'  acc_norm  {hit_norm / n:.4f}   ({hit_norm}/{n})   <- length-normalized (headline)')
+    _elog(f'  acc       {hit / n:.4f}   ({hit}/{n})')
+    _elog(f'  random    0.2500')
+    print(f'\nlog {args.log}')
     raise SystemExit(0)
 
 # ── vis setup ─────────────────────────────────────────────────────────────────
