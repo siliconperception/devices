@@ -765,6 +765,8 @@ if args.evaluate:
     model.eval()
     n = hit = hit_norm = 0
     t0 = time.time()
+    nxt = 0   # next example count to report at: progress every --monitor examples, rounded
+              # up to the batch that crosses it (so any --batch/--monitor pairing reports)
 
     for bi in range(0, len(hs), args.batch):
         batch  = [hs[j] for j in range(bi, min(bi + args.batch, len(hs)))]
@@ -777,9 +779,10 @@ if args.evaluate:
         hit      += (sum_lp.argmax(dim=1) == labels).sum().item()
         hit_norm += (avg_lp.argmax(dim=1) == labels).sum().item()
 
-        if (bi % args.monitor) == 0:
+        if n >= nxt:
             _elog(f'{n:6d}/{len(hs)}  acc_norm {hit_norm / n:.4f}  acc {hit / n:.4f}  '
                   f'({n / (time.time() - t0):.1f} ex/s)')
+            nxt = n + args.monitor
 
     _elog(f'\nHellaSwag {args.split}: {n} examples, {time.time() - t0:.0f}s')
     _elog(f'  acc_norm  {hit_norm / n:.4f}   ({hit_norm}/{n})   <- length-normalized (headline)')
