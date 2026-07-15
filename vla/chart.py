@@ -30,7 +30,7 @@ import datetime
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
-parser.add_argument('--grad_lim', default=10000, type=int,
+parser.add_argument('--grad_lim', default=70000, type=int,
                     help='scale the gradient plot y-axis so the last N grad samples fill ~80%% of it (0 = autoscale)')
 parser.add_argument('--verbose', default=False, action='store_true')
 args = parser.parse_args()
@@ -128,6 +128,12 @@ if args.grad_lim > 0 and grad.size:
 
 ax1.set_ylabel('loss', color='w')
 ax2.set_ylabel('grad', color='y')
+
+# y axis: minor ticks between the majors, and a hairline major gridline in the trace's own
+# colour, so the grid reads as part of its plot instead of competing with the samples
+for ax, color in ((ax1, 'w'), (ax2, 'y')):
+    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax.grid(axis='y', which='major', color=color, linewidth=1, alpha=0.5)
 
 axes = [ax1, ax2]
 if args.verbose:
