@@ -30,8 +30,6 @@ import datetime
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
-parser.add_argument('--grad_lim', default=70000, type=int,
-                    help='scale the gradient plot y-axis so the last N grad samples fill ~80%% of it (0 = autoscale)')
 parser.add_argument('--verbose', default=False, action='store_true')
 args = parser.parse_args()
 print(args)
@@ -100,6 +98,19 @@ print('title:', title)
 
 #grad = np.clip(grad, 0, 10)
 
+def ylim_top(a):
+    """Top y-limit that hides leading startup outliers. Training curves open with a large
+    transient (the first gradient is ~40 before it settles near ~5), which otherwise forces
+    the whole axis to that spike and flattens the rest. Drop initial points whose step to the
+    next point exceeds the series mean, then scale the top to the max of what remains (+5%
+    headroom). A smooth series (e.g. loss) drops nothing, so its top still covers every point."""
+    if a.size == 0:
+        return None
+    thr, i = a.mean(), 0
+    while i + 1 < a.size and abs(a[i + 1] - a[i]) > thr:
+        i += 1
+    return float(a[i:].max()) * 1.05
+
 window_size = 10
 weights = np.ones(window_size) / window_size
 loss_mean = np.convolve(loss, weights, mode='same')
@@ -114,17 +125,13 @@ if title:
 ax1 = fig.add_subplot(nplots,1,1)
 ax2 = fig.add_subplot(nplots,1,2, sharex=ax1)
 #ax1.set_ylim(bottom=0, top=np.log(50257))
-ax1.set_ylim(bottom=0, top=np.log(256))
+ax1.set_ylim(bottom=0, top=ylim_top(loss))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
 #ax1.plot(step, loss_mean, '-w', linewidth=1,alpha=0.8)
 ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
 #ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
 ax2.plot(step, grad, '.y', linewidth=0.1,alpha=1.0, markersize=1)
-# scale the grad y-axis so the last --grad_lim samples' peak sits at ~80% of the axis
-if args.grad_lim > 0 and grad.size:
-    _gtop = float(np.max(grad[-args.grad_lim:]))
-    if _gtop > 0:
-        ax2.set_ylim(bottom=0, top=_gtop / 0.8)
+ax2.set_ylim(bottom=0, top=ylim_top(grad))
 
 ax1.set_ylabel('loss', color='w')
 ax2.set_ylabel('grad', color='y')
