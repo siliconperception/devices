@@ -1,4 +1,6 @@
-python vla.py --dataset dolma3 --streaming --n_layers 5 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 200 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.000625 --lr_mult 2 
+python vla.py --dataset dolma3 --streaming --n_layers 5 --context 7 --n_hidden 32 --hid_mult 2 --depth 7 --kernel 3 --c_text 1 --batch 200 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.000625 --lr_mult 2 
+#python vla.py --dataset dolma3 --streaming --n_layers 5 --context 7 --n_hidden 256 --depth 7 --kernel 3 --c_text 1 --batch 200 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.000625 --lr_mult 2 
+#python vla.py --dataset dolma3 --streaming --n_layers 5 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 200 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.000625 --lr_mult 2 
 
 #python vla.py --dataset dolma3 --streaming --n_layers 3 --context 7 --n_hidden 512 --depth 7 --kernel 3 --c_text 1 --batch 200 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.0001 --lr_mult 10 --load checkpoint.pt.800M
 

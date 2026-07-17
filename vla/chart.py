@@ -140,7 +140,7 @@ ax2.set_ylabel('grad', color='y')
 # colour, so the grid reads as part of its plot instead of competing with the samples
 for ax, color in ((ax1, 'w'), (ax2, 'y')):
     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax.grid(axis='y', which='major', color=color, linewidth=1, alpha=0.5)
+    ax.grid(axis='y', which='major', color=color, linewidth=1, alpha=0.2)
 
 axes = [ax1, ax2]
 if args.verbose:

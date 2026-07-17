@@ -37,7 +37,11 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--context',       default=7,     type=int,
                     help='spatial size S of the DFF grid (S×S)')
 parser.add_argument('--n_hidden',      default=512,   type=int,
-                    help='ContextCNN channel depth')
+                    help='ContextCNN channel depth (layer 1; deeper layers scale by --hid_mult)')
+parser.add_argument('--hid_mult',      default=1.0,   type=float,
+                    help='per-layer n_hidden multiplier: layer k (1-based) has '
+                         'round(n_hidden * --hid_mult**(k-1)) channels, so --n_hidden 32 '
+                         '--n_layers 5 --hid_mult 2 gives 32,64,128,256,512. Default 1.0 (uniform)')
 parser.add_argument('--c_text',        default=1,     type=int,
                     help='token embedding channels (None → n_hidden)')
 parser.add_argument('--depth',         default=7,     type=int,
@@ -150,14 +154,15 @@ _mix = _parse_mix(args.mix)
 
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel')
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'hid_mult')
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
     for _k in _ARCH_ARGS:        # rebuild the model with the architecture it was trained with
-        setattr(args, _k, _loaded_ckpt['saved_args'][_k])
+        # older checkpoints predate some arch args (e.g. hid_mult) → keep the current default
+        setattr(args, _k, _loaded_ckpt['saved_args'].get(_k, getattr(args, _k)))
     _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
 
 if args.c_text is None:          # default token embedding width to n_hidden
@@ -241,39 +246,44 @@ class VLAModel(nn.Module):
     to next-token logits. n_layers stacks (ContextCNN + feedback) units in series,
     each carrying its own DFF state."""
     def __init__(self, n_hidden, depth, kernel, S,
-                 c_text=None, n_layers=1):
+                 c_text=None, n_layers=1, hid_mult=1.0):
         super().__init__()
         self.S          = S
-        self.n_hidden   = n_hidden
+        self.n_hidden   = n_hidden            # layer-1 channel depth (base for --hid_mult)
+        self.hid_mult   = hid_mult
         self.c_text     = c_text if c_text is not None else n_hidden
         self.n_layers   = max(1, n_layers)    # stacked (ContextCNN + feedback) layers (see --n_layers)
+        # per-layer channel depth: layer k (0-based) has round(n_hidden * hid_mult**k) channels.
+        # hid_mult==1.0 keeps every layer at n_hidden (state_dict byte-identical to before).
+        self.hid = [max(1, int(round(n_hidden * (hid_mult ** k)))) for k in range(self.n_layers)]
 
         self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
-        self.context   = ContextCNN(n_hidden, depth, kernel)
-        self.decoder   = DecoderCNN(n_hidden, S)
-        # token grid (c_text) → n_hidden, summed into the DFF state
-        self.text_proj = nn.Conv2d(self.c_text, n_hidden, 1)
+        self.context   = ContextCNN(self.hid[0], depth, kernel)
+        self.decoder   = DecoderCNN(self.hid[-1], S)       # reads the last (widest) layer
+        # token grid (c_text) → layer-1 channels, summed into the DFF state
+        self.text_proj = nn.Conv2d(self.c_text, self.hid[0], 1)
 
         # Deep layers 2..N: each is its own (ContextCNN + feedback) unit. Layer 1 takes
         # the token injection; deep layers take the previous layer's output combined with
-        # their own DFF state. Only built when n_layers>1, so the n_layers=1 state_dict is
-        # byte-identical to the single-layer model.
+        # their own DFF state. deep_proj[li] maps layer li's channels → layer li+1's. Only
+        # built when n_layers>1, so the n_layers=1 state_dict is byte-identical to before.
         if self.n_layers > 1:
             self.deep_context = nn.ModuleList(
-                ContextCNN(n_hidden, depth, kernel)
-                for _ in range(self.n_layers - 1))
+                ContextCNN(self.hid[k], depth, kernel)
+                for k in range(1, self.n_layers))
             self.deep_proj = nn.ModuleList(
-                nn.Conv2d(n_hidden, n_hidden, 1) for _ in range(self.n_layers - 1))
+                nn.Conv2d(self.hid[k], self.hid[k + 1], 1)
+                for k in range(self.n_layers - 1))
         else:
             self.deep_context = self.deep_proj = None
 
-        self.dff = None   # [B, n_layers, n_hidden, S, S] — per-layer DFF stack, detached
+        self.dff = None   # list of n_layers tensors [B, hid[k], S, S], detached; None until first step
 
     def _init_dff(self, B, device):
-        if (self.dff is None or self.dff.shape[0] != B
-                or self.dff.shape[1] != self.n_layers
-                or self.dff.device != torch.device(device)):
-            self.dff = torch.zeros(B, self.n_layers, self.n_hidden, self.S, self.S, device=device)
+        dev = torch.device(device)
+        if (self.dff is None or len(self.dff) != self.n_layers
+                or self.dff[0].shape[0] != B or self.dff[0].device != dev):
+            self.dff = [torch.zeros(B, h, self.S, self.S, device=device) for h in self.hid]
 
     def _tok_grid(self, byte_idx):
         B   = byte_idx.shape[0]
@@ -282,16 +292,17 @@ class VLAModel(nn.Module):
 
     def _layers(self, dff, tok_grid):
         """Run the stack of n_layers (ContextCNN + feedback) units once.
-        dff: [B, n_layers, n_hidden, S, S]. Layer 0 takes the token injection; each
-        deeper layer takes the previous layer's output summed with its own DFF state.
-        Returns (new_dff_stack [B, n_layers, ...], last_layer_output [B, n_hidden, S, S]).
-        No detach here — the caller detaches the returned stack to bound the time horizon."""
-        o = self.context(dff[:, 0] + self.text_proj(tok_grid))
+        dff: list of n_layers tensors [B, hid[k], S, S]. Layer 0 takes the token injection;
+        each deeper layer takes the previous layer's output projected to its own channel
+        width and summed with its own DFF state.
+        Returns (new_dff_list, last_layer_output [B, hid[-1], S, S]). No detach here — the
+        caller detaches the returned list to bound the time horizon."""
+        o = self.context(dff[0] + self.text_proj(tok_grid))
         outs = [o]
         for li in range(self.n_layers - 1):
-            o = self.deep_context[li](dff[:, li + 1] + self.deep_proj[li](o))
+            o = self.deep_context[li](dff[li + 1] + self.deep_proj[li](o))
             outs.append(o)
-        return torch.stack(outs, dim=1), o
+        return outs, o
 
     def forward(self, byte_idx, targets=None, flag=None):
         """
@@ -303,11 +314,12 @@ class VLAModel(nn.Module):
         self._init_dff(B, dev)
 
         if flag is not None and flag.any():
-            self.dff = self.dff.clone()   # clone before in-place
-            self.dff[flag] = 0.0
+            self.dff = [d.clone() for d in self.dff]   # clone before in-place
+            for d in self.dff:
+                d[flag] = 0.0
 
         stack, new_ctx = self._layers(self.dff, self._tok_grid(byte_idx))
-        self.dff = stack.detach().clone()           # store for next step (gradient horizon = 1)
+        self.dff = [d.detach().clone() for d in stack]   # store for next step (gradient horizon = 1)
 
         logits = self.decoder(new_ctx)
         loss   = F.cross_entropy(logits, targets.long()) if targets is not None else None
@@ -318,16 +330,16 @@ class VLAModel(nn.Module):
         """Autoregressive generation seeded by prompt_bytes."""
         self.eval()
         dev = next(self.parameters()).device
-        dff = torch.zeros(1, self.n_layers, self.n_hidden, self.S, self.S, device=dev)
+        dff = [torch.zeros(1, h, self.S, self.S, device=dev) for h in self.hid]
 
         def _step(b):
             nonlocal dff
             bi   = torch.tensor([b], dtype=torch.long, device=dev)
             tok  = self.tok_embed(bi).view(1, self.c_text, 1, 1).expand(-1, -1, self.S, self.S)
             stack, new_ctx = self._layers(dff, tok)
-            dff     = stack.detach().clone()
-            if not dff.isfinite().all():
-                print(f'generate: dff NaN/Inf  dff_std={dff[dff.isfinite()].std().item():.4f}')
+            dff     = [d.detach().clone() for d in stack]
+            if not all(d.isfinite().all() for d in dff):
+                print('generate: dff NaN/Inf')
                 return None
             logits = self.decoder(new_ctx)
             if not logits.isfinite().all():
@@ -356,6 +368,25 @@ class VLAModel(nn.Module):
             if logits is None:
                 break
         return out
+
+
+# ── DFF state stats ─────────────────────────────────────────────────────────────
+# The DFF state is a list of per-layer tensors (widths differ under --hid_mult), so the
+# old stacked-tensor .mean()/.std()/.abs().max() no longer apply. These flatten across all
+# layers to report a single aggregate (element-weighted, matching the old whole-state stats).
+
+def _dff_absmax(dff):
+    """Max |value| across the whole per-layer DFF list (0.0 if empty/None)."""
+    return max((d.abs().max().item() for d in dff), default=0.0) if dff else 0.0
+
+
+def _dff_stats(dff):
+    """(mean, std, absmax, zero_frac) flattened across the whole per-layer DFF list."""
+    if not dff:
+        return 0.0, 0.0, 0.0, 0.0
+    flat = torch.cat([d.reshape(-1) for d in dff])
+    return (flat.mean().item(), flat.std().item(),
+            flat.abs().max().item(), (flat == 0).float().mean().item())
 
 
 # ── clip builders ──────────────────────────────────────────────────────────────
@@ -644,13 +675,15 @@ model = VLAModel(
     S         = args.context,
     c_text    = args.c_text,
     n_layers  = args.n_layers,
+    hid_mult  = args.hid_mult,
 )
 
 if _loaded_ckpt is not None:
     model.load_state_dict(_loaded_ckpt['state_dict'])
     del _loaded_ckpt
 
-_dff_shape = (1, args.n_hidden, args.context, args.context)
+def _lshape(k):   # DFF grid shape for layer k (0-based), honoring per-layer --hid_mult width
+    return (1, model.hid[k], args.context, args.context)
 def _summ(title, mod, **kw):
     # --generate/--vis have no log file, so their summaries would only be terminal noise in
     # front of the sample / the plot window. --verbose asks for them anyway.
@@ -666,14 +699,16 @@ def _summ(title, mod, **kw):
 
 # Summaries follow the data flow: tok_embed → text_proj (token grid → n_hidden,
 # summed into the DFF) → context (recurrent state update) → decoder → logits.
+# With n_layers>1 only the first and last recurrent layers are shown (the intermediate
+# layers repeat the same structure, widening by --hid_mult); their hid list is printed.
 _summ('tok_embed', model.tok_embed, input_data=torch.zeros(1, dtype=torch.long))
 _summ('text_proj', model.text_proj, input_size=(1, model.c_text, args.context, args.context))
 _summ('context (layer 1)' if model.n_layers > 1 else 'context',
-      model.context, input_size=_dff_shape)
+      model.context, input_size=_lshape(0))
 if model.deep_context is not None:
-    _summ(f'deep_context x{model.n_layers - 1} (layers 2..{model.n_layers})',
-          model.deep_context[0], input_size=_dff_shape)
-_summ('decoder', model.decoder, input_size=_dff_shape)
+    _summ(f'context (layer {model.n_layers}, last; per-layer hid {model.hid})',
+          model.deep_context[-1], input_size=_lshape(model.n_layers - 1))
+_summ('decoder', model.decoder, input_size=_lshape(model.n_layers - 1))
 
 model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 'M trainable params')
@@ -730,12 +765,12 @@ def _hs_score(model, examples, device):
     # already ended, so every example finishes on the step that consumes its own last
     # context byte. `logits` then predicts the first byte of the ending.
     ctx, ctx_len = _hs_pad([c for c, _ in rendered], device)
-    dff    = torch.zeros(E, model.n_layers, model.n_hidden, model.S, model.S, device=device)
+    dff    = [torch.zeros(E, h, model.S, model.S, device=device) for h in model.hid]
     logits = torch.zeros(E, 256, device=device)
     for t in range(int(ctx_len.max())):
-        live = (t < ctx_len).view(E, 1, 1, 1, 1)
+        live = (t < ctx_len).view(E, 1, 1, 1)
         stack, out = model._layers(dff, model._tok_grid(ctx[:, t]))
-        dff    = torch.where(live, stack, dff)
+        dff    = [torch.where(live, s, d) for s, d in zip(stack, dff)]
         logits = torch.where(live.view(E, 1), model.decoder(out), logits)
 
     # Ending phase: fork the context state to the four candidates, so the (long) context is
@@ -743,7 +778,7 @@ def _hs_score(model, examples, device):
     # before it, then fed in to produce the logits for e[t+1]. Sequences past their end keep
     # stepping (their state is dead) but contribute nothing: `live` masks them out.
     end, end_len = _hs_pad([e for _, ends in rendered for e in ends], device)
-    dff    = dff.repeat_interleave(4, dim=0)
+    dff    = [d.repeat_interleave(4, dim=0) for d in dff]
     logits = logits.repeat_interleave(4, dim=0)
     sum_lp = torch.zeros(4 * E, device=device)
     for t in range(int(end_len.max())):
@@ -829,8 +864,8 @@ if args.vis:
     _vis_fig.subplots_adjust(top=0.78, bottom=0.10, left=0.04, right=0.98,
                               hspace=0.1, wspace=0.08)
     _vis_ax_dff, _vis_ax_zero, _vis_ax_prob = _vis_axes_grid
-    _vis_ax_dff.set_title('DFF std / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
-    _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
+    _vis_ax_dff.set_title('DFF std / {:d} ch'.format(model.hid[-1]), fontsize=8, pad=2)
+    _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.hid[-1]), fontsize=8, pad=2)
     _vis_ax_prob.set_title('P(next token)', fontsize=8, pad=2)
     # row/column dimension labels (e.g. "7"): DFF state is S×S, prob is 16×16 (256 bytes).
     _vis_ax_dff.set_xlabel(str(model.S),  fontsize=7); _vis_ax_dff.set_ylabel(str(model.S),  fontsize=7)
@@ -872,14 +907,14 @@ if args.vis:
     _ticker = ''              # ticker-tape display buffer (trailing _VIS_WIN chars)
     _ep_len = 0               # chars generated in the current episode (length cap)
     _nstep  = 0
-    dff     = torch.zeros(1, model.n_layers, model.n_hidden, model.S, model.S, device=_dev)
+    dff     = [torch.zeros(1, h, model.S, model.S, device=_dev) for h in model.hid]
 
     while not _vis_exit:
         with torch.no_grad():
             bi   = torch.tensor([_b], dtype=torch.long, device=_dev)
             tok  = model.tok_embed(bi).view(1, model.c_text, 1, 1).expand(-1, -1, model.S, model.S)
             stack, new_ctx = model._layers(dff, tok)               # last-layer output
-            dff     = stack.detach().clone()
+            dff     = [d.detach().clone() for d in stack]
             logits  = model.decoder(new_ctx)
         _nstep += 1
 
@@ -892,7 +927,7 @@ if args.vis:
             if nxt == END or _ep_len >= _VIS_WIN:
                 if nxt == END:
                     _ticker += _vc(END)    # mark the episode break in the ticker
-                dff    = torch.zeros(1, model.n_layers, model.n_hidden, model.S, model.S, device=_dev)
+                dff    = [torch.zeros(1, h, model.S, model.S, device=_dev) for h in model.hid]
                 _queue = list(_prompt)     # episode over: reset state, restart prompt
                 _b     = _queue.pop(0)
                 _ep_len = 0
@@ -909,9 +944,10 @@ if args.vis:
         # per-location sparsity: how many of the n_hidden channels are exactly 0 here
         zero_map    = (new_ctx[0] == 0).sum(dim=0).cpu().numpy()     # [S, S], 0..n_hidden
         prob_img    = prob.detach().cpu().numpy().reshape(16, 16)    # 256 bytes → 16×16
+        _dff_mean, _dff_std, _dff_max, _ = _dff_stats(dff)
         _vis_header.set_text(
             ('step {:8d}  layers {:d}  dff_std {:6.4f}  dff_max {:7.3f}  p_max {:5.3f}  T {:.2f}').format(
-                _nstep, model.n_layers, float(dff.std()), float(dff.abs().max()),
+                _nstep, model.n_layers, _dff_std, _dff_max,
                 float(prob.max()), args.temperature)
             + '\n' + 'gen: ' + _ticker
         )
@@ -925,10 +961,12 @@ if args.vis:
         _vis_dff_vmax = _fmax if _vis_dff_vmax is None else max(_fmax, 0.98 * _vis_dff_vmax)
         _vis_img_dff.set_clim(0.0, _vis_dff_vmax or 1e-9)
 
-        # fixed 0..n_hidden scale: absolute zero-count is more readable than an autoscale
+        # fixed 0..hid[-1] scale: absolute zero-count is more readable than an autoscale.
+        # vmax is the last layer's channel count (what new_ctx has), not n_hidden — under
+        # --hid_mult those differ and an n_hidden cap would saturate the whole panel.
         if _vis_img_zero is None:
             _vis_img_zero = _vis_ax_zero.matshow(zero_map, cmap=args.cmap,
-                                                 vmin=0, vmax=model.n_hidden)
+                                                 vmin=0, vmax=model.hid[-1])
             _vis_ax_zero.set_xticks([]); _vis_ax_zero.set_yticks([])
         else:
             _vis_img_zero.set_data(zero_map)
@@ -986,16 +1024,28 @@ def _lr_scaled_groups(model, base_lr, mult):
     return [{'params': [p for p in g if p.requires_grad], 'lr': base_lr * (mult ** i)}
             for i, g in enumerate(layers)]
 
-if args.lr_mult != 1.0:
-    _params = _lr_scaled_groups(model, args.lr_max, args.lr_mult)
-    _lrs = [g['lr'] for g in _params]
-    _lw  = max(len(f'{lr:.9f}') for lr in _lrs)   # align fixed-point column
-    _iw  = len(str(len(_lrs)))
-    print(f'lr_mult {args.lr_mult} per-layer lr:')
-    for _i, _lr in enumerate(_lrs):
-        print(f'  L{_i + 1:<{_iw}} {_lr:>{_lw}.9f}')
-else:
-    _params = _trainable
+# Only build per-layer optimizer groups when lr_mult scaling is active; otherwise pass the
+# flat param list so the optimizer/checkpoint layout is byte-identical to before.
+_params = _lr_scaled_groups(model, args.lr_max, args.lr_mult) if args.lr_mult != 1.0 else _trainable
+
+# Per-layer summary: hidden width, trainable params, lr. Shown whenever the model is
+# non-uniform across layers (either multiplier off its default). Param counts come from the
+# same grouping as the lr scaling (layer 1 includes tok_embed/text_proj; the last includes
+# the decoder), so the columns add up to the trainable total.
+if args.lr_mult != 1.0 or args.hid_mult != 1.0:
+    _groups = _lr_scaled_groups(model, args.lr_max, args.lr_mult)
+    _hid = model.hid
+    _pc  = [sum(p.numel() for p in g['params']) for g in _groups]
+    _lrs = [g['lr'] for g in _groups]
+    _yw  = max(len('layer'), 1 + len(str(len(_groups))))   # 'L' + index, vs header label
+    _hw  = max(len('hidden'), *(len(str(h))     for h in _hid))
+    _pw  = max(len('params'), *(len(f'{p:,}')   for p in _pc))
+    _lw  = max(len('lr'),     *(len(f'{lr:.9f}') for lr in _lrs))
+    print(f'per-layer (lr_mult {args.lr_mult}, hid_mult {args.hid_mult}):')
+    print(f'  {"layer":<{_yw}}  {"hidden":>{_hw}}  {"params":>{_pw}}  {"lr":>{_lw}}')
+    for _i in range(len(_groups)):
+        print(f'  {"L" + str(_i + 1):<{_yw}}  {_hid[_i]:>{_hw}}  '
+              f'{_pc[_i]:>{_pw},}  {_lrs[_i]:>{_lw}.9f}')
 
 # Route lr/weight_decay/momentum to each optimizer's supported knobs: Rprop takes
 # neither weight_decay nor momentum; Adagrad takes weight_decay but no momentum.
@@ -1159,7 +1209,7 @@ try:
         if not torch.isfinite(loss):
             print(f'\n*** HALT: non-finite loss at step {i} ***')
             print(f'  loss     = {loss.item()}')
-            print(f'  dff_max  = {model.dff.abs().max().item() if model.dff is not None else None}')
+            print(f'  dff_max  = {_dff_absmax(model.dff)}')
             print(f'  logit_max= {logits.detach().abs().max().item()}')
             print(f'  grads(prev step): {_diag(model)}')
             break
@@ -1172,7 +1222,7 @@ try:
         # halt before the optimizer corrupts weights if grads went non-finite
         if not math.isfinite(total_norm):
             print(f'\n*** HALT: non-finite grad at step {i} ***')
-            print(f'  dff_max  = {model.dff.abs().max().item() if model.dff is not None else None}')
+            print(f'  dff_max  = {_dff_absmax(model.dff)}')
             print(f'  logit_max= {logits.detach().abs().max().item()}')
             print(f'  per-module g(rad)/w(eight): {_diag(model)}')
             break
@@ -1187,7 +1237,7 @@ try:
         larr.append(loss.item())
 
         if (i % args.monitor) == 0:
-            dff = model.dff
+            _dmean, _dstd, _dmax, _dzero = _dff_stats(model.dff)
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
                  'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
                  'dff_zeros {:8.5f}').format(
@@ -1195,10 +1245,7 @@ try:
                 np.mean(larr[-args.monitor:]),
                 np.mean(garr[-args.monitor:]),
                 scheduler.get_last_lr()[0],
-                dff.mean().item() if dff is not None else 0.0,
-                dff.std().item()  if dff is not None else 0.0,
-                dff.abs().max().item() if dff is not None else 0.0,
-                (dff == 0).float().mean().item() if dff is not None else 0.0,
+                _dmean, _dstd, _dmax, _dzero,
             )
             print(s)
             with open(args.log, 'a') as f:
