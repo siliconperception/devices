@@ -88,6 +88,10 @@ parser.add_argument('--lr_min',        default=1e-6,  type=float,
 parser.add_argument('--lr_max',        default=0.001, type=float,
                     help='peak learning rate; also the constant lr for --schedule const '
                          'and the optimizer base lr')
+parser.add_argument('--lr_mult',       default=1.0,   type=float,
+                    help='per-layer lr multiplier: layer k (1-based) gets base_lr * '
+                         '--lr_mult**(k-1), so with --lr_mult 10 --n_layers 3 the three '
+                         'layers use lr, 10*lr, 100*lr. Default 1.0 (all layers equal)')
 parser.add_argument('--lr_warmup',     default=1000,  type=int,
                     help='ramp-up length in steps (triangle)')
 parser.add_argument('--lr_period',     default=10000, type=int,
@@ -149,10 +153,12 @@ _mix = _parse_mix(args.mix)
 _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel')
 
 _loaded_ckpt = None
+_start_step  = 0                 # resumed global step count (0 for a fresh run)
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
     for _k in _ARCH_ARGS:        # rebuild the model with the architecture it was trained with
         setattr(args, _k, _loaded_ckpt['saved_args'][_k])
+    _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
 
 if args.c_text is None:          # default token embedding width to n_hidden
     args.c_text = args.n_hidden
@@ -180,6 +186,16 @@ if args.seed is None:
 
 torch.manual_seed(args.seed)
 print(args)
+# Prepend the resumed checkpoint's log so chart.py sees one uninterrupted sequence.
+# Only for real training log files (skip devnull / generate / vis / evaluate).
+if (_loaded_ckpt is not None and not args.evaluate
+        and args.log and args.log != os.devnull):
+    _prev_log = _loaded_ckpt.get('log') or ''
+    if _prev_log:
+        with open(args.log, 'a') as f:
+            f.write(_prev_log)
+            if not _prev_log.endswith('\n'):
+                f.write('\n')
 with open(args.log, 'a') as f:
     print('ARGS', args, file=f)
 
@@ -813,7 +829,7 @@ if args.vis:
     _vis_fig.subplots_adjust(top=0.78, bottom=0.10, left=0.04, right=0.98,
                               hspace=0.1, wspace=0.08)
     _vis_ax_dff, _vis_ax_zero, _vis_ax_prob = _vis_axes_grid
-    _vis_ax_dff.set_title('DFF std',       fontsize=8, pad=2)
+    _vis_ax_dff.set_title('DFF std / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
     _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
     _vis_ax_prob.set_title('P(next token)', fontsize=8, pad=2)
     # row/column dimension labels (e.g. "7"): DFF state is S×S, prob is 16×16 (256 bytes).
@@ -950,22 +966,53 @@ if args.vis:
 
 _trainable = [p for p in model.parameters() if p.requires_grad]
 
+# --lr_mult scales the base lr per layer: layer 1 keeps base lr, each deeper layer is
+# multiplied by an extra factor of --lr_mult. Layer 1 = {tok_embed, text_proj, context};
+# deep layers 2..N = their (deep_context + deep_proj) unit; the decoder reads the last
+# layer's output, so it rides the deepest lr. Groups carry a per-group 'lr' (its initial_lr)
+# which LambdaLR then scales by the shared schedule factor. With --lr_mult 1.0 we pass the
+# flat param list so the optimizer/checkpoint layout is byte-identical to before.
+def _lr_scaled_groups(model, base_lr, mult):
+    N      = model.n_layers
+    layers = [[] for _ in range(N)]
+    layers[0] += list(model.tok_embed.parameters())
+    layers[0] += list(model.text_proj.parameters())
+    layers[0] += list(model.context.parameters())
+    if model.deep_context is not None:
+        for li in range(N - 1):
+            layers[li + 1] += list(model.deep_context[li].parameters())
+            layers[li + 1] += list(model.deep_proj[li].parameters())
+    layers[-1] += list(model.decoder.parameters())
+    return [{'params': [p for p in g if p.requires_grad], 'lr': base_lr * (mult ** i)}
+            for i, g in enumerate(layers)]
+
+if args.lr_mult != 1.0:
+    _params = _lr_scaled_groups(model, args.lr_max, args.lr_mult)
+    _lrs = [g['lr'] for g in _params]
+    _lw  = max(len(f'{lr:.9f}') for lr in _lrs)   # align fixed-point column
+    _iw  = len(str(len(_lrs)))
+    print(f'lr_mult {args.lr_mult} per-layer lr:')
+    for _i, _lr in enumerate(_lrs):
+        print(f'  L{_i + 1:<{_iw}} {_lr:>{_lw}.9f}')
+else:
+    _params = _trainable
+
 # Route lr/weight_decay/momentum to each optimizer's supported knobs: Rprop takes
 # neither weight_decay nor momentum; Adagrad takes weight_decay but no momentum.
 if args.opt == 'sgd':
-    optimizer = torch.optim.SGD(_trainable, lr=args.lr_max,
+    optimizer = torch.optim.SGD(_params, lr=args.lr_max,
                                 momentum=args.momentum, weight_decay=args.weight_decay)
 elif args.opt == 'rmsprop':
-    optimizer = torch.optim.RMSprop(_trainable, lr=args.lr_max,
+    optimizer = torch.optim.RMSprop(_params, lr=args.lr_max,
                                     momentum=args.momentum, weight_decay=args.weight_decay, centered=True)
 elif args.opt == 'rprop':
-    optimizer = torch.optim.Rprop(_trainable, lr=args.lr_max)
+    optimizer = torch.optim.Rprop(_params, lr=args.lr_max)
 elif args.opt == 'adagrad':
-    optimizer = torch.optim.Adagrad(_trainable, lr=args.lr_max,
+    optimizer = torch.optim.Adagrad(_params, lr=args.lr_max,
                                     weight_decay=args.weight_decay)
 elif args.opt == 'adamw':
     # --momentum drives beta2 (second-moment decay); beta1 fixed at 0.9.
-    optimizer = torch.optim.AdamW(_trainable, lr=args.lr_max,
+    optimizer = torch.optim.AdamW(_params, lr=args.lr_max,
                                   betas=(0.9, args.momentum),
                                   weight_decay=args.weight_decay)
 
@@ -994,6 +1041,17 @@ def _lr_factor(step):
     return lr / _hi
 
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_factor)
+
+# On resume, fast-forward the schedule to the checkpoint's step so the lr at the first
+# continued step matches where the previous run left off (LambdaLR is stateless in step).
+# Update both the live optimizer lr and the scheduler's cached last_lr (what get_last_lr
+# reports in the STEP line).
+if _start_step:
+    scheduler.last_epoch = _start_step
+    _lrs = [_base * _lr_factor(_start_step) for _base in scheduler.base_lrs]
+    for _g, _lr in zip(optimizer.param_groups, _lrs):
+        _g['lr'] = _lr
+    scheduler._last_lr = _lrs
 
 # ── data thread ───────────────────────────────────────────────────────────────
 
@@ -1045,7 +1103,7 @@ def _diag(model):
 # ── training loop ─────────────────────────────────────────────────────────────
 
 larr, garr = [], []
-i = 0
+i = _start_step        # continue the step count from the resumed checkpoint (0 if fresh)
 
 try:
     while True:
@@ -1054,8 +1112,15 @@ try:
             _finite = all(torch.isfinite(p).all() for p in model.state_dict().values()
                           if p.is_floating_point())
             if _finite:
-                torch.save({'saved_args': vars(args), 'state_dict': model.state_dict()},
-                           args.save)
+                # Embed the cumulative log so a later --load can prepend it and chart.py
+                # sees one uninterrupted sequence across resumes. args.log already begins
+                # with any log carried in from the checkpoint we resumed from.
+                _log_text = ''
+                if args.log and args.log != os.devnull and os.path.exists(args.log):
+                    with open(args.log) as _lf:
+                        _log_text = _lf.read()
+                torch.save({'saved_args': vars(args), 'state_dict': model.state_dict(),
+                            'log': _log_text, 'step': i}, args.save)
             else:
                 print(f'WARNING: non-finite params at step {i}; skipping checkpoint save')
 
@@ -1149,8 +1214,8 @@ try:
         optimizer.zero_grad()
         i += 1
 
-        if args.run_steps is not None and i >= args.run_steps:
-            break
+        if args.run_steps is not None and (i - _start_step) >= args.run_steps:
+            break   # --run_steps caps steps for this invocation, not the global count
 
 except KeyboardInterrupt:
     pass
