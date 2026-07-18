@@ -134,6 +134,20 @@ parser.add_argument('--cmap',          default='viridis',
                     help='matplotlib colormap for --vis')
 parser.add_argument('--temperature',   default=1.0,   type=float,
                     help='--vis sampling temperature (0 = argmax)')
+parser.add_argument('--push',          default=False, action='store_true',
+                    help='push the --load checkpoint to the HuggingFace hub as a '
+                         'PyTorchModelHubMixin model (repo --hub_repo), then exit. '
+                         'No training. Requires a write token (huggingface-cli login)')
+parser.add_argument('--pretrained',    default=False, action='store_true',
+                    help='load weights + architecture from the HuggingFace hub repo '
+                         '--hub_repo instead of a local checkpoint. Overrides --load')
+parser.add_argument('--revision',      default=None,
+                    help='--pretrained: hub branch, tag or commit (default: main)')
+parser.add_argument('--hub_repo',      default='siliconperception/VLA',
+                    help='--push target / --pretrained source hub repo id')
+parser.add_argument('--private',       default=False, action='store_true',
+                    help='--push: create the hub repo private (default: the org/user default '
+                         'visibility). Ignored if the repo already exists')
 args = parser.parse_args()
 
 # ── multi-dataset mix ─────────────────────────────────────────────────────────
@@ -158,6 +172,11 @@ _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'h
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
+if args.pretrained and args.load is not None:
+    # --pretrained overrides --load: the hub repo carries both weights and config.json,
+    # so a local checkpoint would only be half-used (its saved_args then foreign weights).
+    print(f'--pretrained overrides --load {args.load}: loading {args.hub_repo} from the hub')
+    args.load = None
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
     for _k in _ARCH_ARGS:        # rebuild the model with the architecture it was trained with
@@ -171,7 +190,7 @@ if args.c_text is None:          # default token embedding width to n_hidden
 # ── log / device / seed ───────────────────────────────────────────────────────
 
 if args.log is None:
-    if args.generate or args.vis:        # one-shot generate / visualizer: don't create a log file
+    if args.generate or args.vis or args.push:   # one-shot modes: don't create a log file
         args.log = os.devnull
     else:
         # training -> log/log.<date>, --evaluate -> log/eval.<date>, so eval scores are kept
@@ -239,7 +258,18 @@ class DecoderCNN(nn.Module):
         return self.pool(self.proj(x)).squeeze(-1).squeeze(-1)
 
 
-class VLAModel(nn.Module):
+# PyTorchModelHubMixin gives VLAModel save_pretrained()/push_to_hub()/from_pretrained()
+# (see --push). It records the __init__ kwargs as config.json, so a hub checkpoint rebuilds
+# with the architecture it was trained with. huggingface_hub is optional: without it the
+# model is a plain nn.Module and only --push is unavailable.
+try:
+    from huggingface_hub import PyTorchModelHubMixin as _HubMixin
+except ImportError:                                  # pragma: no cover
+    class _HubMixin:                                 # no-op base
+        pass
+
+
+class VLAModel(nn.Module, _HubMixin):
     """Recurrent CNN language model over raw bytes. Each step the current token is
     embedded, broadcast to an S×S grid, projected to n_hidden and summed into the
     per-layer DFF state; ContextCNN updates the state and the decoder reads it out
@@ -652,10 +682,10 @@ def worker(stop, q, datasets, args, mix=None):
 
 # ── dataset loading (before CUDA init) ───────────────────────────────────────
 
-if args.vis or args.generate or args.evaluate:
+if args.vis or args.generate or args.evaluate or args.push:
     hf_dataset = None                 # one-shot modes: --vis/--generate run from the prompt
-                                      # token, --evaluate loads HellaSwag itself — none of
-                                      # them needs a training dataset
+                                      # token, --evaluate loads HellaSwag itself, --push only
+                                      # uploads weights — none of them needs a training dataset
 else:
     print('loading dataset...')
     if _mix is not None:
@@ -668,26 +698,49 @@ else:
 
 # ── model instantiation ───────────────────────────────────────────────────────
 
-model = VLAModel(
-    n_hidden  = args.n_hidden,
-    depth     = args.depth,
-    kernel    = args.kernel,
-    S         = args.context,
-    c_text    = args.c_text,
-    n_layers  = args.n_layers,
-    hid_mult  = args.hid_mult,
-)
+if args.pretrained:
+    # Hub checkpoint: config.json (written by save_pretrained) supplies the architecture,
+    # so the model is built from it rather than from the --context/--n_hidden/... args.
+    # Those args are then synced to what was actually built, since the rest of the script
+    # reads them (DFF shapes, summaries, logged ARGS line).
+    if not hasattr(VLAModel, 'from_pretrained'):
+        print('ERROR: --pretrained requires huggingface_hub (pip install huggingface_hub)')
+        raise SystemExit(1)
+    print(f'loading {args.hub_repo} from the hub...')
+    model = VLAModel.from_pretrained(args.hub_repo, revision=args.revision)
+    _cfg  = getattr(model, '_hub_mixin_config', None) or {}
+    for _k, _a in (('context', 'S'), ('n_hidden', 'n_hidden'), ('c_text', 'c_text'),
+                   ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel'),
+                   ('hid_mult', 'hid_mult')):
+        if _a in _cfg:
+            setattr(args, _k, _cfg[_a])
+    print('pretrained config', _cfg)
+    # The ARGS line was logged before the hub config was known, so it still shows the CLI
+    # arch defaults. Re-log the corrected args, or the log would misattribute the run.
+    print('ARGS (pretrained)', args)
+    with open(args.log, 'a') as f:
+        print('ARGS', args, file=f)
+else:
+    model = VLAModel(
+        n_hidden  = args.n_hidden,
+        depth     = args.depth,
+        kernel    = args.kernel,
+        S         = args.context,
+        c_text    = args.c_text,
+        n_layers  = args.n_layers,
+        hid_mult  = args.hid_mult,
+    )
 
-if _loaded_ckpt is not None:
-    model.load_state_dict(_loaded_ckpt['state_dict'])
-    del _loaded_ckpt
+    if _loaded_ckpt is not None:
+        model.load_state_dict(_loaded_ckpt['state_dict'])
+        del _loaded_ckpt
 
 def _lshape(k):   # DFF grid shape for layer k (0-based), honoring per-layer --hid_mult width
     return (1, model.hid[k], args.context, args.context)
 def _summ(title, mod, **kw):
     # --generate/--vis have no log file, so their summaries would only be terminal noise in
     # front of the sample / the plot window. --verbose asks for them anyway.
-    if (args.generate or args.vis) and not args.verbose:
+    if (args.generate or args.vis or args.push) and not args.verbose:
         return
     s = str(torchinfo.summary(mod, col_names=['input_size', 'output_size', 'num_params'],
                               verbose=0, **kw))
@@ -713,11 +766,31 @@ _summ('decoder', model.decoder, input_size=_lshape(model.n_layers - 1))
 model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 'M trainable params')
 
+if args.push:
+    # one-shot: save the loaded checkpoint in HuggingFace format (model.safetensors +
+    # config.json, from PyTorchModelHubMixin) and upload it to --hub_repo, then exit.
+    # Needs a write token in the environment (huggingface-cli login, or HF_TOKEN).
+    if args.load is None and not args.pretrained:
+        print('ERROR: --push requires --load (nothing to push but random weights)')
+        raise SystemExit(1)
+    if not hasattr(model, 'push_to_hub'):
+        print('ERROR: --push requires huggingface_hub (pip install huggingface_hub)')
+        raise SystemExit(1)
+    local = os.path.basename(args.hub_repo)
+    print(f'saving {args.load or args.hub_repo} to ./{local} ...')
+    model.to('cpu').save_pretrained(local)
+    print(f'pushing to https://huggingface.co/{args.hub_repo} ...')
+    # private=None (not False) when the flag is unset: that lets the hub apply the org's
+    # default visibility for a new repo. Ignored if the repo already exists.
+    model.push_to_hub(args.hub_repo, private=args.private or None)
+    print('done')
+    raise SystemExit(0)
+
 if args.generate:
     # one-shot text generation: prompt = hard-coded START + args.prompt, print the
     # decoded continuation, then exit. No dataset, worker, optimizer or training loop.
-    if args.load is None:
-        print('WARNING: --generate without --load is running an untrained model')
+    if args.load is None and not args.pretrained:
+        print('WARNING: --generate without --load/--pretrained is running an untrained model')
     prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
     out    = model.generate(prompt, args.n)
     print(args.prompt + bytes(out).decode('utf-8', errors='replace'))
@@ -804,14 +877,15 @@ if args.evaluate:
         with open(args.log, 'a') as f:
             print(s, file=f)
 
-    if args.load is None:
-        _elog('WARNING: --evaluate without --load is scoring an untrained model')
+    if args.load is None and not args.pretrained:
+        _elog('WARNING: --evaluate without --load/--pretrained is scoring an untrained model')
     from datasets import load_dataset
     _elog(f'loading hellaswag ({args.split})...')
     hs = load_dataset('Rowan/hellaswag', split=args.split)
     if args.limit is not None:
         hs = hs.select(range(min(args.limit, len(hs))))
-    _elog(f'EVAL checkpoint {args.load} split {args.split} examples {len(hs)}')
+    _elog(f'EVAL checkpoint {args.load or (args.hub_repo + "@" + (args.revision or "main"))} '
+          f'split {args.split} examples {len(hs)}')
 
     model.eval()
     n = hit = hit_norm = 0
