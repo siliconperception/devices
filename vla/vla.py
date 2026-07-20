@@ -100,6 +100,28 @@ parser.add_argument('--lr_warmup',     default=1000,  type=int,
                     help='ramp-up length in steps (triangle)')
 parser.add_argument('--lr_period',     default=10000, type=int,
                     help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle')
+# gradient accumulation
+parser.add_argument('--grad',          default='none', choices=['none', 'stair', 'rand', 'expo'],
+                    help='gradient accumulation schedule. none = update every batch (default, '
+                         'original behavior). stair = step accumulation from --gstart to --gend '
+                         'in --gnum jumps over --gperiod batches. rand = resample accumulation '
+                         'uniformly from [--gstart, --gend] before every optimizer step. '
+                         'expo = resample from a geometric distribution: --gstart with '
+                         'probability --gprob, +1 for each further failure (0.5 → 1,2,3 at '
+                         '50%,25%,12.5%), truncated at --gend when --gend > --gstart')
+parser.add_argument('--gstart',        default=1,     type=int,
+                    help='initial (stair) / minimum (rand) batches accumulated per optimizer step')
+parser.add_argument('--gend',          default=1,     type=int,
+                    help='final (stair) / maximum (rand) batches accumulated per optimizer step')
+parser.add_argument('--gnum',          default=1,     type=int,
+                    help='--grad stair: number of jumps from --gstart to --gend. 1 = single jump '
+                         'to --gend at --gperiod; N = N evenly spaced levels over --gperiod')
+parser.add_argument('--gperiod',       default=10000, type=int,
+                    help='--grad stair: batch count over which the staircase completes')
+parser.add_argument('--gprob',         default=0.5,   type=float,
+                    help='--grad expo: geometric success probability. P(acc=gstart+n) = '
+                         'gprob*(1-gprob)**n, so the mean accumulation is gstart-1+1/gprob '
+                         '(0.5 → 2, 0.25 → 4). Lower = heavier tail')
 # I/O
 parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
@@ -166,12 +188,24 @@ def _parse_mix(spec):
 
 _mix = _parse_mix(args.mix)
 
+# accumulation knobs are inert without a mode — warn rather than silently ignore them
+if args.grad == 'none':
+    _gset = [f'--{_k} {getattr(args, _k)}' for _k in ('gstart', 'gend', 'gnum', 'gperiod', 'gprob')
+             if getattr(args, _k) != parser.get_default(_k)]
+    if _gset:
+        print(f'WARNING: {" ".join(_gset)} ignored without --grad stair|rand|expo '
+              f'(accumulating 1 batch per step)')
+# gprob must stay in (0, 1]: at 0 an uncapped expo draw would never terminate
+if args.grad == 'expo' and not (0.0 < args.gprob <= 1.0):
+    parser.error(f'--gprob {args.gprob} out of range: must be > 0 and <= 1')
+
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
 _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'hid_mult')
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
+_start_upd   = 0                 # resumed cumulative optimizer updates
 if args.pretrained and args.load is not None:
     # --pretrained overrides --load: the hub repo carries both weights and config.json,
     # so a local checkpoint would only be half-used (its saved_args then foreign weights).
@@ -183,6 +217,9 @@ if args.load is not None:
         # older checkpoints predate some arch args (e.g. hid_mult) → keep the current default
         setattr(args, _k, _loaded_ckpt['saved_args'].get(_k, getattr(args, _k)))
     _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
+    # cumulative weight updates; absent in checkpoints predating gradient accumulation,
+    # where every batch was an update, so fall back to the batch count
+    _start_upd  = int(_loaded_ckpt.get('updates', _start_step))
 
 if args.c_text is None:          # default token embedding width to n_hidden
     args.c_text = args.n_hidden
@@ -1224,10 +1261,34 @@ def _diag(model):
     return ' '.join(f'{n}:g{_gnorm(ps):.1e}/w{_wnorm(ps):.1e}'
                     for n, ps in _param_groups_named(model).items())
 
+# ── gradient accumulation schedule ────────────────────────────────────────────
+
+def _accum(i):
+    """Batches to accumulate for the cycle starting at batch i (1 = update every batch)."""
+    if args.grad == 'none':
+        return 1
+    if args.grad == 'rand':
+        return random.randint(min(args.gstart, args.gend), max(args.gstart, args.gend))
+    if args.grad == 'expo':
+        # geometric: keep adding a batch while the coin keeps failing, so gstart lands
+        # with probability gprob, gstart+1 with gprob*(1-gprob), and so on. --gend, when
+        # it exceeds --gstart, truncates the tail (its mass piles onto gend).
+        cap = args.gend if args.gend > args.gstart else None
+        acc = args.gstart
+        while random.random() >= args.gprob and (cap is None or acc < cap):
+            acc += 1
+        return max(1, acc)
+    # stair: gnum evenly spaced levels reaching gend at gperiod, then held
+    k = min(args.gnum, int(i * args.gnum / max(1, args.gperiod)))
+    return max(1, round(args.gstart + (args.gend - args.gstart) * k / args.gnum))
+
 # ── training loop ─────────────────────────────────────────────────────────────
 
 larr, garr = [], []
 i = _start_step        # continue the step count from the resumed checkpoint (0 if fresh)
+upd      = _start_upd  # cumulative optimizer steps (weight updates)
+acc      = _accum(i)   # batches accumulated in the current optimizer cycle
+acc_left = acc         # batches remaining before the next optimizer.step()
 
 try:
     while True:
@@ -1244,7 +1305,7 @@ try:
                     with open(args.log) as _lf:
                         _log_text = _lf.read()
                 torch.save({'saved_args': vars(args), 'state_dict': model.state_dict(),
-                            'log': _log_text, 'step': i}, args.save)
+                            'log': _log_text, 'step': i, 'updates': upd}, args.save)
             else:
                 print(f'WARNING: non-finite params at step {i}; skipping checkpoint save')
 
@@ -1288,10 +1349,11 @@ try:
             print(f'  grads(prev step): {_diag(model)}')
             break
 
-        loss.backward()
+        # scale so an accumulated cycle produces the mean gradient over its batches,
+        # keeping update magnitude comparable to acc=1
+        (loss / acc).backward()
 
         total_norm = _gnorm_all(model)                         # grad norm BEFORE the step
-        garr.append(total_norm)
 
         # halt before the optimizer corrupts weights if grads went non-finite
         if not math.isfinite(total_norm):
@@ -1301,25 +1363,44 @@ try:
             print(f'  per-module g(rad)/w(eight): {_diag(model)}')
             break
 
-        optimizer.step()
+        acc_left -= 1
+        if acc_left == 0:
+            garr.append(total_norm)   # norm of the full accumulated gradient
+            optimizer.step()
+            upd += 1
+
         model.dff = dff_prev                                    # restore so eval recomputes same step
         model.eval()
         with torch.no_grad():
             _, _ = model(x, targets=y, flag=flag)              # recompute DFF using updated model
 
-        # ── monitor ───────────────────────────────────────────────────────────
         larr.append(loss.item())
 
+        lr_cur = scheduler.get_last_lr()[0]    # lr the optimizer just used
+
+        if acc_left == 0:
+            # lr schedule advances per optimizer update, not per batch, so --lr_period
+            # keeps meaning "N weight updates" regardless of accumulation
+            scheduler.step()
+            optimizer.zero_grad()
+            acc      = _accum(i + 1)     # pick the next cycle's accumulation
+            acc_left = acc
+        i += 1
+
+        # ── monitor ───────────────────────────────────────────────────────────
+        # Printed after the counter advances, so STEP is the count of batches actually
+        # processed: the first line is STEP == --monitor (never a STEP 0 line reporting a
+        # single batch), and at acc=1 upd lines up with STEP instead of running one ahead.
         if (i % args.monitor) == 0:
             _dmean, _dstd, _dmax, _dzero = _dff_stats(model.dff)
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
                  'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
-                 'dff_zeros {:8.5f}').format(
+                 'dff_zeros {:8.5f} upd {:10}').format(
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
-                np.mean(garr[-args.monitor:]),
-                scheduler.get_last_lr()[0],
-                _dmean, _dstd, _dmax, _dzero,
+                np.mean(garr[-args.monitor:]) if garr else float('nan'),
+                lr_cur,
+                _dmean, _dstd, _dmax, _dzero, upd,
             )
             print(s)
             with open(args.log, 'a') as f:
@@ -1330,10 +1411,6 @@ try:
             for _a in (larr, garr):
                 if len(_a) > args.monitor:
                     del _a[:-args.monitor]
-
-        scheduler.step()
-        optimizer.zero_grad()
-        i += 1
 
         if args.run_steps is not None and (i - _start_step) >= args.run_steps:
             break   # --run_steps caps steps for this invocation, not the global count
