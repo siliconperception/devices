@@ -37,11 +37,10 @@ batch_size=0
 
 # STEP lines look like:
 #   STEP 100 wall <date> <time> loss <v> grad <v> lr <v> dff_mean <v> dff_std <v> \
-#        dff_max <v> dff_zeros <v> a_std <v> i_std <v> upd <v>  [loss_txt <v> loss_av <v>]
+#        dff_max <v> dff_zeros <v> a_std <v> i_std <v>  [loss_txt <v> loss_av <v>]
 # Parse each numeric field by name so the layout is robust to the date/time tokens
-# and to optional mix-mode fields. Logs predating a field parse as 0.0 for it.
-_FIELDS = ['loss', 'grad', 'lr', 'dff_mean', 'dff_std', 'dff_max', 'dff_zeros', 'a_std', 'i_std',
-           'upd']
+# and to optional mix-mode fields.
+_FIELDS = ['loss', 'grad', 'lr', 'dff_mean', 'dff_std', 'dff_max', 'dff_zeros', 'a_std', 'i_std']
 _NUM    = r'(-?[\d.]+(?:[eE][-+]?\d+)?)'
 
 def parselog(fn):
@@ -80,16 +79,6 @@ mean = d['dff_mean']
 std  = d['dff_std']
 dmax = d['dff_max']
 zero = d['dff_zeros']
-upd  = d['upd']
-
-# Effective accumulation over each monitor interval: batches per weight update. Derived
-# from upd rather than logged, so it also reconstructs for logs written before/without it.
-# Intervals with no update (acc > monitor) and logs with no upd column give nan → no line.
-with np.errstate(divide='ignore', invalid='ignore'):
-    acc = np.full_like(step, np.nan)
-    if step.size > 1:
-        dstep, dupd = np.diff(step), np.diff(upd)
-        acc[1:] = np.where(dupd > 0, dstep / np.where(dupd > 0, dupd, 1), np.nan)
 
 # total wall-clock elapsed and average training steps/sec (from the STEP wall timestamps)
 title = None
@@ -128,9 +117,9 @@ loss_mean = np.convolve(loss, weights, mode='same')
 
 #fig = plt.figure(figsize=(10,40))
 plt.style.use('dark_background')
-# --verbose shows all seven panels; otherwise just loss and grad
-nplots = 7 if args.verbose else 2
-fig = plt.figure(figsize=(12, 16 if args.verbose else 6))
+# --verbose shows all six panels; otherwise just loss and grad
+nplots = 6 if args.verbose else 2
+fig = plt.figure(figsize=(12, 14 if args.verbose else 6))
 if title:
     fig.suptitle(title)
 ax1 = fig.add_subplot(nplots,1,1)
@@ -160,8 +149,6 @@ if args.verbose:
     ax4 = fig.add_subplot(nplots,1,4, sharex=ax1)
     ax5 = fig.add_subplot(nplots,1,5, sharex=ax1)
     ax6 = fig.add_subplot(nplots,1,6, sharex=ax1)
-    ax7 = fig.add_subplot(nplots,1,7, sharex=ax1)
-    ax7b = ax7.twinx()
     #ax3.set_ylim(bottom=0, top=20)
     #ax3b.set_ylim(bottom=-1, top=1)
     ax3.plot(step, std, '-r', linewidth=1.0,alpha=0.5)
@@ -171,22 +158,13 @@ if args.verbose:
     ax5.plot(step, dmax, '-m', linewidth=2.0,alpha=0.5)
     ax6.set_ylim(bottom=0, top=1)
     ax6.plot(step, zero, '-g', linewidth=2.0,alpha=0.5)
-    # cumulative weight updates vs batches: slope is 1/acc, so the curve bends as gradient
-    # accumulation ramps. Reference line is upd==step (acc=1, an update every batch).
-    ax7.plot(step, upd, '-w', linewidth=2.0,alpha=0.7)
-    ax7.plot(step, step - step[0] + (upd[0] if upd.size else 0), ':w', linewidth=1, alpha=0.3)
-    ax7b.plot(step, acc, '-', color='orange', linewidth=1.5, alpha=0.6)
-    ax7b.set_ylim(bottom=0)
 
     ax3.set_ylabel('std', color='r')
     ax3b.set_ylabel('mean', color='b')
     ax4.set_ylabel('lr', color='c')
     ax5.set_ylabel('dff_max', color='m')
     ax6.set_ylabel('sparsity', color='g')
-    ax7.set_ylabel('upd', color='w')
-    ax7b.set_ylabel('acc', color='orange')
-    # ax7 last so it carries the shared x tick labels (ax7b is its twin)
-    axes += [ax3, ax3b, ax4, ax5, ax6, ax7b, ax7]
+    axes += [ax3, ax3b, ax4, ax5, ax6]
 
 # only the bottom subplot carries the shared x-axis label and tick labels
 for ax in axes[:-1]:

@@ -37,11 +37,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--context',       default=7,     type=int,
                     help='spatial size S of the DFF grid (S×S)')
 parser.add_argument('--n_hidden',      default=512,   type=int,
-                    help='ContextCNN channel depth (layer 1; deeper layers scale by --hid_mult)')
-parser.add_argument('--hid_mult',      default=1.0,   type=float,
-                    help='per-layer n_hidden multiplier: layer k (1-based) has '
-                         'round(n_hidden * --hid_mult**(k-1)) channels, so --n_hidden 32 '
-                         '--n_layers 5 --hid_mult 2 gives 32,64,128,256,512. Default 1.0 (uniform)')
+                    help='ContextCNN channel depth')
 parser.add_argument('--c_text',        default=1,     type=int,
                     help='token embedding channels (None → n_hidden)')
 parser.add_argument('--depth',         default=7,     type=int,
@@ -100,28 +96,6 @@ parser.add_argument('--lr_warmup',     default=1000,  type=int,
                     help='ramp-up length in steps (triangle)')
 parser.add_argument('--lr_period',     default=10000, type=int,
                     help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle')
-# gradient accumulation
-parser.add_argument('--grad',          default='none', choices=['none', 'stair', 'rand', 'expo'],
-                    help='gradient accumulation schedule. none = update every batch (default, '
-                         'original behavior). stair = step accumulation from --gstart to --gend '
-                         'in --gnum jumps over --gperiod batches. rand = resample accumulation '
-                         'uniformly from [--gstart, --gend] before every optimizer step. '
-                         'expo = resample from a geometric distribution: --gstart with '
-                         'probability --gprob, +1 for each further failure (0.5 → 1,2,3 at '
-                         '50%,25%,12.5%), truncated at --gend when --gend > --gstart')
-parser.add_argument('--gstart',        default=1,     type=int,
-                    help='initial (stair) / minimum (rand) batches accumulated per optimizer step')
-parser.add_argument('--gend',          default=1,     type=int,
-                    help='final (stair) / maximum (rand) batches accumulated per optimizer step')
-parser.add_argument('--gnum',          default=1,     type=int,
-                    help='--grad stair: number of jumps from --gstart to --gend. 1 = single jump '
-                         'to --gend at --gperiod; N = N evenly spaced levels over --gperiod')
-parser.add_argument('--gperiod',       default=10000, type=int,
-                    help='--grad stair: batch count over which the staircase completes')
-parser.add_argument('--gprob',         default=0.5,   type=float,
-                    help='--grad expo: geometric success probability. P(acc=gstart+n) = '
-                         'gprob*(1-gprob)**n, so the mean accumulation is gstart-1+1/gprob '
-                         '(0.5 → 2, 0.25 → 4). Lower = heavier tail')
 # I/O
 parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
@@ -188,24 +162,12 @@ def _parse_mix(spec):
 
 _mix = _parse_mix(args.mix)
 
-# accumulation knobs are inert without a mode — warn rather than silently ignore them
-if args.grad == 'none':
-    _gset = [f'--{_k} {getattr(args, _k)}' for _k in ('gstart', 'gend', 'gnum', 'gperiod', 'gprob')
-             if getattr(args, _k) != parser.get_default(_k)]
-    if _gset:
-        print(f'WARNING: {" ".join(_gset)} ignored without --grad stair|rand|expo '
-              f'(accumulating 1 batch per step)')
-# gprob must stay in (0, 1]: at 0 an uncapped expo draw would never terminate
-if args.grad == 'expo' and not (0.0 < args.gprob <= 1.0):
-    parser.error(f'--gprob {args.gprob} out of range: must be > 0 and <= 1')
-
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'hid_mult')
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel')
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
-_start_upd   = 0                 # resumed cumulative optimizer updates
 if args.pretrained and args.load is not None:
     # --pretrained overrides --load: the hub repo carries both weights and config.json,
     # so a local checkpoint would only be half-used (its saved_args then foreign weights).
@@ -214,12 +176,9 @@ if args.pretrained and args.load is not None:
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
     for _k in _ARCH_ARGS:        # rebuild the model with the architecture it was trained with
-        # older checkpoints predate some arch args (e.g. hid_mult) → keep the current default
+        # older checkpoints may predate an arch arg → keep the current default for it
         setattr(args, _k, _loaded_ckpt['saved_args'].get(_k, getattr(args, _k)))
     _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
-    # cumulative weight updates; absent in checkpoints predating gradient accumulation,
-    # where every batch was an update, so fall back to the batch count
-    _start_upd  = int(_loaded_ckpt.get('updates', _start_step))
 
 if args.c_text is None:          # default token embedding width to n_hidden
     args.c_text = args.n_hidden
@@ -313,44 +272,39 @@ class VLAModel(nn.Module, _HubMixin):
     to next-token logits. n_layers stacks (ContextCNN + feedback) units in series,
     each carrying its own DFF state."""
     def __init__(self, n_hidden, depth, kernel, S,
-                 c_text=None, n_layers=1, hid_mult=1.0):
+                 c_text=None, n_layers=1):
         super().__init__()
         self.S          = S
-        self.n_hidden   = n_hidden            # layer-1 channel depth (base for --hid_mult)
-        self.hid_mult   = hid_mult
+        self.n_hidden   = n_hidden
         self.c_text     = c_text if c_text is not None else n_hidden
         self.n_layers   = max(1, n_layers)    # stacked (ContextCNN + feedback) layers (see --n_layers)
-        # per-layer channel depth: layer k (0-based) has round(n_hidden * hid_mult**k) channels.
-        # hid_mult==1.0 keeps every layer at n_hidden (state_dict byte-identical to before).
-        self.hid = [max(1, int(round(n_hidden * (hid_mult ** k)))) for k in range(self.n_layers)]
 
         self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
-        self.context   = ContextCNN(self.hid[0], depth, kernel)
-        self.decoder   = DecoderCNN(self.hid[-1], S)       # reads the last (widest) layer
-        # token grid (c_text) → layer-1 channels, summed into the DFF state
-        self.text_proj = nn.Conv2d(self.c_text, self.hid[0], 1)
+        self.context   = ContextCNN(n_hidden, depth, kernel)
+        self.decoder   = DecoderCNN(n_hidden, S)
+        # token grid (c_text) → n_hidden, summed into the DFF state
+        self.text_proj = nn.Conv2d(self.c_text, n_hidden, 1)
 
         # Deep layers 2..N: each is its own (ContextCNN + feedback) unit. Layer 1 takes
         # the token injection; deep layers take the previous layer's output combined with
-        # their own DFF state. deep_proj[li] maps layer li's channels → layer li+1's. Only
-        # built when n_layers>1, so the n_layers=1 state_dict is byte-identical to before.
+        # their own DFF state. Only built when n_layers>1, so the n_layers=1 state_dict is
+        # byte-identical to the single-layer model.
         if self.n_layers > 1:
             self.deep_context = nn.ModuleList(
-                ContextCNN(self.hid[k], depth, kernel)
-                for k in range(1, self.n_layers))
+                ContextCNN(n_hidden, depth, kernel) for _ in range(self.n_layers - 1))
             self.deep_proj = nn.ModuleList(
-                nn.Conv2d(self.hid[k], self.hid[k + 1], 1)
-                for k in range(self.n_layers - 1))
+                nn.Conv2d(n_hidden, n_hidden, 1) for _ in range(self.n_layers - 1))
         else:
             self.deep_context = self.deep_proj = None
 
-        self.dff = None   # list of n_layers tensors [B, hid[k], S, S], detached; None until first step
+        self.dff = None   # list of n_layers tensors [B, n_hidden, S, S], detached; None until first step
 
     def _init_dff(self, B, device):
         dev = torch.device(device)
         if (self.dff is None or len(self.dff) != self.n_layers
                 or self.dff[0].shape[0] != B or self.dff[0].device != dev):
-            self.dff = [torch.zeros(B, h, self.S, self.S, device=device) for h in self.hid]
+            self.dff = [torch.zeros(B, self.n_hidden, self.S, self.S, device=device)
+                        for _ in range(self.n_layers)]
 
     def _tok_grid(self, byte_idx):
         B   = byte_idx.shape[0]
@@ -359,10 +313,9 @@ class VLAModel(nn.Module, _HubMixin):
 
     def _layers(self, dff, tok_grid):
         """Run the stack of n_layers (ContextCNN + feedback) units once.
-        dff: list of n_layers tensors [B, hid[k], S, S]. Layer 0 takes the token injection;
-        each deeper layer takes the previous layer's output projected to its own channel
-        width and summed with its own DFF state.
-        Returns (new_dff_list, last_layer_output [B, hid[-1], S, S]). No detach here — the
+        dff: list of n_layers tensors [B, n_hidden, S, S]. Layer 0 takes the token injection;
+        each deeper layer takes the previous layer's output summed with its own DFF state.
+        Returns (new_dff_list, last_layer_output [B, n_hidden, S, S]). No detach here — the
         caller detaches the returned list to bound the time horizon."""
         o = self.context(dff[0] + self.text_proj(tok_grid))
         outs = [o]
@@ -397,7 +350,8 @@ class VLAModel(nn.Module, _HubMixin):
         """Autoregressive generation seeded by prompt_bytes."""
         self.eval()
         dev = next(self.parameters()).device
-        dff = [torch.zeros(1, h, self.S, self.S, device=dev) for h in self.hid]
+        dff = [torch.zeros(1, self.n_hidden, self.S, self.S, device=dev)
+               for _ in range(self.n_layers)]
 
         def _step(b):
             nonlocal dff
@@ -438,9 +392,8 @@ class VLAModel(nn.Module, _HubMixin):
 
 
 # ── DFF state stats ─────────────────────────────────────────────────────────────
-# The DFF state is a list of per-layer tensors (widths differ under --hid_mult), so the
-# old stacked-tensor .mean()/.std()/.abs().max() no longer apply. These flatten across all
-# layers to report a single aggregate (element-weighted, matching the old whole-state stats).
+# The DFF state is a list of one tensor per recurrent layer. These flatten across all
+# layers to report a single aggregate (element-weighted over the whole state).
 
 def _dff_absmax(dff):
     """Max |value| across the whole per-layer DFF list (0.0 if empty/None)."""
@@ -747,8 +700,7 @@ if args.pretrained:
     model = VLAModel.from_pretrained(args.hub_repo, revision=args.revision)
     _cfg  = getattr(model, '_hub_mixin_config', None) or {}
     for _k, _a in (('context', 'S'), ('n_hidden', 'n_hidden'), ('c_text', 'c_text'),
-                   ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel'),
-                   ('hid_mult', 'hid_mult')):
+                   ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel')):
         if _a in _cfg:
             setattr(args, _k, _cfg[_a])
     print('pretrained config', _cfg)
@@ -765,15 +717,13 @@ else:
         S         = args.context,
         c_text    = args.c_text,
         n_layers  = args.n_layers,
-        hid_mult  = args.hid_mult,
     )
 
     if _loaded_ckpt is not None:
         model.load_state_dict(_loaded_ckpt['state_dict'])
         del _loaded_ckpt
 
-def _lshape(k):   # DFF grid shape for layer k (0-based), honoring per-layer --hid_mult width
-    return (1, model.hid[k], args.context, args.context)
+_dff_shape = (1, args.n_hidden, args.context, args.context)
 def _summ(title, mod, **kw):
     # --generate/--vis have no log file, so their summaries would only be terminal noise in
     # front of the sample / the plot window. --verbose asks for them anyway.
@@ -789,16 +739,14 @@ def _summ(title, mod, **kw):
 
 # Summaries follow the data flow: tok_embed → text_proj (token grid → n_hidden,
 # summed into the DFF) → context (recurrent state update) → decoder → logits.
-# With n_layers>1 only the first and last recurrent layers are shown (the intermediate
-# layers repeat the same structure, widening by --hid_mult); their hid list is printed.
 _summ('tok_embed', model.tok_embed, input_data=torch.zeros(1, dtype=torch.long))
 _summ('text_proj', model.text_proj, input_size=(1, model.c_text, args.context, args.context))
 _summ('context (layer 1)' if model.n_layers > 1 else 'context',
-      model.context, input_size=_lshape(0))
+      model.context, input_size=_dff_shape)
 if model.deep_context is not None:
-    _summ(f'context (layer {model.n_layers}, last; per-layer hid {model.hid})',
-          model.deep_context[-1], input_size=_lshape(model.n_layers - 1))
-_summ('decoder', model.decoder, input_size=_lshape(model.n_layers - 1))
+    _summ(f'deep_context x{model.n_layers - 1} (layers 2..{model.n_layers})',
+          model.deep_context[0], input_size=_dff_shape)
+_summ('decoder', model.decoder, input_size=_dff_shape)
 
 model = model.to(args.device)
 print(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 'M trainable params')
@@ -875,7 +823,8 @@ def _hs_score(model, examples, device):
     # already ended, so every example finishes on the step that consumes its own last
     # context byte. `logits` then predicts the first byte of the ending.
     ctx, ctx_len = _hs_pad([c for c, _ in rendered], device)
-    dff    = [torch.zeros(E, h, model.S, model.S, device=device) for h in model.hid]
+    dff    = [torch.zeros(E, model.n_hidden, model.S, model.S, device=device)
+              for _ in range(model.n_layers)]
     logits = torch.zeros(E, 256, device=device)
     for t in range(int(ctx_len.max())):
         live = (t < ctx_len).view(E, 1, 1, 1)
@@ -975,8 +924,8 @@ if args.vis:
     _vis_fig.subplots_adjust(top=0.78, bottom=0.10, left=0.04, right=0.98,
                               hspace=0.1, wspace=0.08)
     _vis_ax_dff, _vis_ax_zero, _vis_ax_prob = _vis_axes_grid
-    _vis_ax_dff.set_title('DFF std / {:d} ch'.format(model.hid[-1]), fontsize=8, pad=2)
-    _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.hid[-1]), fontsize=8, pad=2)
+    _vis_ax_dff.set_title('DFF std / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
+    _vis_ax_zero.set_title('DFF zeros / {:d} ch'.format(model.n_hidden), fontsize=8, pad=2)
     _vis_ax_prob.set_title('P(next token)', fontsize=8, pad=2)
     # row/column dimension labels (e.g. "7"): DFF state is S×S, prob is 16×16 (256 bytes).
     _vis_ax_dff.set_xlabel(str(model.S),  fontsize=7); _vis_ax_dff.set_ylabel(str(model.S),  fontsize=7)
@@ -1018,7 +967,8 @@ if args.vis:
     _ticker = ''              # ticker-tape display buffer (trailing _VIS_WIN chars)
     _ep_len = 0               # chars generated in the current episode (length cap)
     _nstep  = 0
-    dff     = [torch.zeros(1, h, model.S, model.S, device=_dev) for h in model.hid]
+    dff     = [torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
+               for _ in range(model.n_layers)]
 
     while not _vis_exit:
         with torch.no_grad():
@@ -1038,7 +988,8 @@ if args.vis:
             if nxt == END or _ep_len >= _VIS_WIN:
                 if nxt == END:
                     _ticker += _vc(END)    # mark the episode break in the ticker
-                dff    = [torch.zeros(1, h, model.S, model.S, device=_dev) for h in model.hid]
+                dff    = [torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
+                          for _ in range(model.n_layers)]
                 _queue = list(_prompt)     # episode over: reset state, restart prompt
                 _b     = _queue.pop(0)
                 _ep_len = 0
@@ -1072,12 +1023,10 @@ if args.vis:
         _vis_dff_vmax = _fmax if _vis_dff_vmax is None else max(_fmax, 0.98 * _vis_dff_vmax)
         _vis_img_dff.set_clim(0.0, _vis_dff_vmax or 1e-9)
 
-        # fixed 0..hid[-1] scale: absolute zero-count is more readable than an autoscale.
-        # vmax is the last layer's channel count (what new_ctx has), not n_hidden — under
-        # --hid_mult those differ and an n_hidden cap would saturate the whole panel.
+        # fixed 0..n_hidden scale: absolute zero-count is more readable than an autoscale.
         if _vis_img_zero is None:
             _vis_img_zero = _vis_ax_zero.matshow(zero_map, cmap=args.cmap,
-                                                 vmin=0, vmax=model.hid[-1])
+                                                 vmin=0, vmax=model.n_hidden)
             _vis_ax_zero.set_xticks([]); _vis_ax_zero.set_yticks([])
         else:
             _vis_img_zero.set_data(zero_map)
@@ -1139,24 +1088,20 @@ def _lr_scaled_groups(model, base_lr, mult):
 # flat param list so the optimizer/checkpoint layout is byte-identical to before.
 _params = _lr_scaled_groups(model, args.lr_max, args.lr_mult) if args.lr_mult != 1.0 else _trainable
 
-# Per-layer summary: hidden width, trainable params, lr. Shown whenever the model is
-# non-uniform across layers (either multiplier off its default). Param counts come from the
-# same grouping as the lr scaling (layer 1 includes tok_embed/text_proj; the last includes
-# the decoder), so the columns add up to the trainable total.
-if args.lr_mult != 1.0 or args.hid_mult != 1.0:
+# Per-layer summary: trainable params and lr, shown when --lr_mult scales the layers. Param
+# counts come from the same grouping as the lr scaling (layer 1 includes tok_embed/text_proj;
+# the last includes the decoder), so the columns add up to the trainable total.
+if args.lr_mult != 1.0:
     _groups = _lr_scaled_groups(model, args.lr_max, args.lr_mult)
-    _hid = model.hid
     _pc  = [sum(p.numel() for p in g['params']) for g in _groups]
     _lrs = [g['lr'] for g in _groups]
     _yw  = max(len('layer'), 1 + len(str(len(_groups))))   # 'L' + index, vs header label
-    _hw  = max(len('hidden'), *(len(str(h))     for h in _hid))
     _pw  = max(len('params'), *(len(f'{p:,}')   for p in _pc))
     _lw  = max(len('lr'),     *(len(f'{lr:.9f}') for lr in _lrs))
-    print(f'per-layer (lr_mult {args.lr_mult}, hid_mult {args.hid_mult}):')
-    print(f'  {"layer":<{_yw}}  {"hidden":>{_hw}}  {"params":>{_pw}}  {"lr":>{_lw}}')
+    print(f'per-layer (lr_mult {args.lr_mult}):')
+    print(f'  {"layer":<{_yw}}  {"params":>{_pw}}  {"lr":>{_lw}}')
     for _i in range(len(_groups)):
-        print(f'  {"L" + str(_i + 1):<{_yw}}  {_hid[_i]:>{_hw}}  '
-              f'{_pc[_i]:>{_pw},}  {_lrs[_i]:>{_lw}.9f}')
+        print(f'  {"L" + str(_i + 1):<{_yw}}  {_pc[_i]:>{_pw},}  {_lrs[_i]:>{_lw}.9f}')
 
 # Route lr/weight_decay/momentum to each optimizer's supported knobs: Rprop takes
 # neither weight_decay nor momentum; Adagrad takes weight_decay but no momentum.
@@ -1261,34 +1206,10 @@ def _diag(model):
     return ' '.join(f'{n}:g{_gnorm(ps):.1e}/w{_wnorm(ps):.1e}'
                     for n, ps in _param_groups_named(model).items())
 
-# ── gradient accumulation schedule ────────────────────────────────────────────
-
-def _accum(i):
-    """Batches to accumulate for the cycle starting at batch i (1 = update every batch)."""
-    if args.grad == 'none':
-        return 1
-    if args.grad == 'rand':
-        return random.randint(min(args.gstart, args.gend), max(args.gstart, args.gend))
-    if args.grad == 'expo':
-        # geometric: keep adding a batch while the coin keeps failing, so gstart lands
-        # with probability gprob, gstart+1 with gprob*(1-gprob), and so on. --gend, when
-        # it exceeds --gstart, truncates the tail (its mass piles onto gend).
-        cap = args.gend if args.gend > args.gstart else None
-        acc = args.gstart
-        while random.random() >= args.gprob and (cap is None or acc < cap):
-            acc += 1
-        return max(1, acc)
-    # stair: gnum evenly spaced levels reaching gend at gperiod, then held
-    k = min(args.gnum, int(i * args.gnum / max(1, args.gperiod)))
-    return max(1, round(args.gstart + (args.gend - args.gstart) * k / args.gnum))
-
 # ── training loop ─────────────────────────────────────────────────────────────
 
 larr, garr = [], []
 i = _start_step        # continue the step count from the resumed checkpoint (0 if fresh)
-upd      = _start_upd  # cumulative optimizer steps (weight updates)
-acc      = _accum(i)   # batches accumulated in the current optimizer cycle
-acc_left = acc         # batches remaining before the next optimizer.step()
 
 try:
     while True:
@@ -1305,7 +1226,7 @@ try:
                     with open(args.log) as _lf:
                         _log_text = _lf.read()
                 torch.save({'saved_args': vars(args), 'state_dict': model.state_dict(),
-                            'log': _log_text, 'step': i, 'updates': upd}, args.save)
+                            'log': _log_text, 'step': i}, args.save)
             else:
                 print(f'WARNING: non-finite params at step {i}; skipping checkpoint save')
 
@@ -1349,11 +1270,10 @@ try:
             print(f'  grads(prev step): {_diag(model)}')
             break
 
-        # scale so an accumulated cycle produces the mean gradient over its batches,
-        # keeping update magnitude comparable to acc=1
-        (loss / acc).backward()
+        loss.backward()
 
         total_norm = _gnorm_all(model)                         # grad norm BEFORE the step
+        garr.append(total_norm)
 
         # halt before the optimizer corrupts weights if grads went non-finite
         if not math.isfinite(total_norm):
@@ -1363,44 +1283,25 @@ try:
             print(f'  per-module g(rad)/w(eight): {_diag(model)}')
             break
 
-        acc_left -= 1
-        if acc_left == 0:
-            garr.append(total_norm)   # norm of the full accumulated gradient
-            optimizer.step()
-            upd += 1
-
+        optimizer.step()
         model.dff = dff_prev                                    # restore so eval recomputes same step
         model.eval()
         with torch.no_grad():
             _, _ = model(x, targets=y, flag=flag)              # recompute DFF using updated model
 
+        # ── monitor ───────────────────────────────────────────────────────────
         larr.append(loss.item())
 
-        lr_cur = scheduler.get_last_lr()[0]    # lr the optimizer just used
-
-        if acc_left == 0:
-            # lr schedule advances per optimizer update, not per batch, so --lr_period
-            # keeps meaning "N weight updates" regardless of accumulation
-            scheduler.step()
-            optimizer.zero_grad()
-            acc      = _accum(i + 1)     # pick the next cycle's accumulation
-            acc_left = acc
-        i += 1
-
-        # ── monitor ───────────────────────────────────────────────────────────
-        # Printed after the counter advances, so STEP is the count of batches actually
-        # processed: the first line is STEP == --monitor (never a STEP 0 line reporting a
-        # single batch), and at acc=1 upd lines up with STEP instead of running one ahead.
         if (i % args.monitor) == 0:
             _dmean, _dstd, _dmax, _dzero = _dff_stats(model.dff)
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
                  'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
-                 'dff_zeros {:8.5f} upd {:10}').format(
+                 'dff_zeros {:8.5f}').format(
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
-                np.mean(garr[-args.monitor:]) if garr else float('nan'),
-                lr_cur,
-                _dmean, _dstd, _dmax, _dzero, upd,
+                np.mean(garr[-args.monitor:]),
+                scheduler.get_last_lr()[0],
+                _dmean, _dstd, _dmax, _dzero,
             )
             print(s)
             with open(args.log, 'a') as f:
@@ -1411,6 +1312,10 @@ try:
             for _a in (larr, garr):
                 if len(_a) > args.monitor:
                     del _a[:-args.monitor]
+
+        scheduler.step()
+        optimizer.zero_grad()
+        i += 1
 
         if args.run_steps is not None and (i - _start_step) >= args.run_steps:
             break   # --run_steps caps steps for this invocation, not the global count
