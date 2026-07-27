@@ -24,11 +24,24 @@ import subprocess
 import datetime
 import time
 import random
+import re
 import matplotlib.pyplot as plt
 
 NULL      = 0x00
 START     = 0x02
 END       = 0x03
+
+STX_TEXT  = '<STX>'   # how START renders in displayed text
+ETX_TEXT  = '<ETX>'   # how END renders in displayed text
+
+
+def _printable(s):
+    """Render model text for display: START/END as <STX>/<ETX>, whitespace escaped,
+    any remaining unprintable bytes dropped."""
+    s = (s.replace(chr(START), STX_TEXT).replace(chr(END), ETX_TEXT)
+          .replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r'))
+    return ''.join(c for c in s if c.isprintable())
+
 
 # ── args ──────────────────────────────────────────────────────────────────────
 
@@ -106,8 +119,9 @@ parser.add_argument('--generate',      default=False, action='store_true',
                     help='one-shot: load checkpoint, generate from START+prompt, print, exit (no dataset/training)')
 parser.add_argument('--n',             default=200,   type=int,
                     help='tokens to generate per sample')
-parser.add_argument('--prompt',        default='\x02',
-                    help='generation prompt (\\x02 = START)')
+parser.add_argument('--prompt',        default='',
+                    help='generation prompt; START (0x02) is always prepended, so leave '
+                         'empty to generate from START alone')
 parser.add_argument('--evaluate',      default=False, action='store_true',
                     help='one-shot: load checkpoint, score HellaSwag zero-shot, print accuracy, '
                          'exit (no training dataset/training)')
@@ -129,7 +143,8 @@ parser.add_argument('--delay',         default=0.1,   type=float,
 parser.add_argument('--cmap',          default='viridis',
                     help='matplotlib colormap for --vis')
 parser.add_argument('--temperature',   default=1.0,   type=float,
-                    help='--vis sampling temperature (0 = argmax)')
+                    help='sampling temperature for --vis/--generate and the training-loop '
+                         'text samples (0 = argmax)')
 parser.add_argument('--push',          default=False, action='store_true',
                     help='push the --load checkpoint to the HuggingFace hub as a '
                          'PyTorchModelHubMixin model (repo --hub_repo), then exit. '
@@ -346,8 +361,8 @@ class VLAModel(nn.Module, _HubMixin):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, prompt_bytes, n_tokens):
-        """Autoregressive generation seeded by prompt_bytes."""
+    def generate(self, prompt_bytes, n_tokens, temperature=1.0):
+        """Autoregressive generation seeded by prompt_bytes (temperature 0 = argmax)."""
         self.eval()
         dev = next(self.parameters()).device
         dff = [torch.zeros(1, self.n_hidden, self.S, self.S, device=dev)
@@ -380,7 +395,8 @@ class VLAModel(nn.Module, _HubMixin):
 
         out = []
         for _ in range(n_tokens):
-            bval = torch.multinomial(F.softmax(logits[0], dim=-1), 1).item()
+            prob = F.softmax(logits[0] / max(temperature, 1e-6), dim=-1)
+            bval = torch.multinomial(prob, 1).item()
             if bval == END:
                 break
             if bval != NULL:
@@ -772,13 +788,15 @@ if args.push:
     raise SystemExit(0)
 
 if args.generate:
-    # one-shot text generation: prompt = hard-coded START + args.prompt, print the
-    # decoded continuation, then exit. No dataset, worker, optimizer or training loop.
+    # one-shot text generation: prompt = START + args.prompt, print the decoded
+    # continuation, then exit. No dataset, worker, optimizer or training loop.
+    # Same seeding as --vis and the training-loop sampler, and the same [START]+text
+    # framing the model is trained on, so the output always opens with <STX>.
     if args.load is None and not args.pretrained:
         print('WARNING: --generate without --load/--pretrained is running an untrained model')
     prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
-    out    = model.generate(prompt, args.n)
-    print(args.prompt + bytes(out).decode('utf-8', errors='replace'))
+    out    = model.generate(prompt, args.n, temperature=args.temperature)
+    print(_printable(bytes(prompt + out).decode('utf-8', errors='replace')))
     raise SystemExit(0)
 
 # ── hellaswag evaluation ──────────────────────────────────────────────────────
@@ -795,11 +813,33 @@ if args.generate:
 #               does not penalize long endings, and is what zero-shot results are quoted with.
 #   acc      -- total log-prob of the ending (un-normalized).
 
+def _hs_preprocess(text):
+    """The standard HellaSwag text cleanup (EleutherAI lm-evaluation-harness,
+    lm_eval/tasks/hellaswag/utils.py). The bracket tags -- [header] [title] [step]
+    [substeps] -- are artifacts of the WikiHow portion of the dataset and are stripped
+    before scoring; ~68% of contexts and ~65% of endings contain them."""
+    text = text.strip()
+    text = text.replace(' [title]', '. ')
+    text = re.sub('\\[.*?\\]', '', text)
+    text = text.replace('  ', ' ')
+    return text
+
+
 def _hs_render(example):
-    """Rendered the way zero-shot HellaSwag is rendered for a left-to-right LM:
-    prompt = ctx, completion = ' ' + ending. Bytes, not tokens."""
-    ctx     = [START] + list(example['ctx'].encode('utf-8', errors='replace'))
-    endings = [list((' ' + e).encode('utf-8', errors='replace')) for e in example['endings']]
+    """Rendered the way zero-shot HellaSwag is rendered for a left-to-right LM, matching
+    the lm-evaluation-harness so acc_norm is comparable to published numbers:
+
+        prompt     = activity_label + ': ' + ctx_a + ' ' + ctx_b.capitalize()
+        completion = ' ' + ending
+
+    both run through _hs_preprocess. Note the dataset's own 'ctx' field is just
+    ctx_a + ' ' + ctx_b -- it carries no activity label and leaves ctx_b uncapitalized --
+    so the parts are recombined here rather than used directly. Bytes, not tokens."""
+    ctx     = example['ctx_a'] + ' ' + example['ctx_b'].capitalize()
+    ctx     = _hs_preprocess(example['activity_label'] + ': ' + ctx)
+    ctx     = [START] + list(ctx.encode('utf-8', errors='replace'))
+    endings = [list((' ' + _hs_preprocess(e)).encode('utf-8', errors='replace'))
+               for e in example['endings']]
     return ctx, endings
 
 
@@ -910,9 +950,9 @@ _VIS_WIN         = 80
 
 
 def _vc(b):
-    if b == 0x02: return '▶'
-    if b == 0x03: return '◀'
-    if b == 0x00: return '_'
+    if b == START: return STX_TEXT
+    if b == END:   return ETX_TEXT
+    if b == NULL:  return '_'
     c = chr(b) if 32 <= b < 127 else '\xb7'
     return '\xb7' if c in '$\\' else c
 
@@ -956,15 +996,16 @@ if args.vis:
     _vis_fig.canvas.mpl_connect('key_press_event', _on_key)
 
     # ── live text-generation visualization (no training) ───────────────────────
-    # Feed the prompt (START by default) then autoregressively sample, rendering the
-    # DFF-std and P(next token) panels for every generated byte. The header shows a
-    # stats line and the generated text. Read-only: no dataset, optimizer or worker.
+    # Feed the prompt (START, plus --prompt if given) then autoregressively sample,
+    # rendering the DFF-std and P(next token) panels for every generated byte. The header
+    # shows a stats line and the generated text. Read-only: no dataset, optimizer or worker.
     model.eval()
     _dev    = next(model.parameters()).device
-    _prompt = list(args.prompt.encode('utf-8', errors='replace')) or [START]
+    _prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
+    _ptext  = ''.join(_vc(b) for b in _prompt)  # rendered prompt, echoed at each episode start
     _queue  = list(_prompt)   # remaining prompt bytes to inject as new tokens
     _b      = _queue.pop(0)   # current token being injected
-    _ticker = ''              # ticker-tape display buffer (trailing _VIS_WIN chars)
+    _ticker = _ptext          # ticker-tape display buffer (trailing _VIS_WIN chars)
     _ep_len = 0               # chars generated in the current episode (length cap)
     _nstep  = 0
     dff     = [torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
@@ -993,6 +1034,7 @@ if args.vis:
                 _queue = list(_prompt)     # episode over: reset state, restart prompt
                 _b     = _queue.pop(0)
                 _ep_len = 0
+                _ticker += _ptext          # new episode opens with <STX> again
             else:
                 if nxt != NULL:
                     _ticker += _vc(nxt)
@@ -1170,10 +1212,6 @@ w.start()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _printable(s):
-    s = s.replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r')
-    return ''.join(c for c in s if c.isprintable())
-
 # ── gradient / explosion instrumentation ──────────────────────────────────────
 
 def _gnorm(params):
@@ -1239,9 +1277,9 @@ try:
                     print(d, file=f)
 
             model.eval()
-            prompt = list(args.prompt.encode('utf-8', errors='replace')) or [START]
-            out    = model.generate(prompt, args.n)
-            gen_text = _printable(bytes(out).decode('utf-8', errors='replace'))
+            prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
+            out    = model.generate(prompt, args.n, temperature=args.temperature)
+            gen_text = _printable(bytes(prompt + out).decode('utf-8', errors='replace'))
             lines = [f'GEN: {gen_text}']
             if _tsample:                       # a recent training-text example
                 lines.append(f'TXT-SAMPLE: {_printable(_tsample[:120])}')
