@@ -63,7 +63,8 @@ parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
 # training
 parser.add_argument('--dataset',       default='tiny',
-                    help='tiny | c4 | web | brt | dolma3')
+                    help='tiny | c4 | web | brt | dolma3 | s1k (s1k is only 1000 reasoning '
+                         'examples -- meant for --mix, it loops quickly on its own)')
 parser.add_argument('--mix',           default=None,
                     help='joint multi-dataset training, "name:weight,..." e.g. '
                          '"brt:0.5,web:0.5"; overrides --dataset, samples one dataset per clip '
@@ -503,7 +504,28 @@ _TEXT_DATASETS = {
     'web':    ('Skylion007/openwebtext', None, 'train', 'text'),
     'brt':    ('allenai/big-reasoning-traces', 'DeepSeek', 'train', 'text'),
     'dolma3': ('allenai/dolma3_mix-150B-1025', None, 'train', 'text'),
+    's1k':    ('simplescaling/s1K',      None, 'train', None),
 }
+
+# Datasets with no single text column: the example is rendered to one string here.
+# s1K (https://huggingface.co/datasets/simplescaling/s1K) is 1000 curated reasoning
+# examples with columns question / thinking_trajectories (list of traces, one per
+# teacher sample) / attempt (the final written answer) / solution (reference answer).
+# Rendered in the same <think>/<answer> shape brt's text column uses, so a
+# --mix "brt:...,s1k:..." teaches one consistent reasoning format.
+
+def _fmt_s1k(ex):
+    traj = ex.get('thinking_trajectories') or []
+    think = (traj[0] if traj else '') or ''
+    # 'attempt' is the teacher's written-out answer; fall back to the reference solution
+    answer = (ex.get('attempt') or ex.get('solution') or '').strip()
+    q = (ex.get('question') or '').strip()
+    if not q or not (think.strip() or answer):
+        return ''
+    return f'{q}<think>\n{think.strip()}\n</think>\n<answer>\n{answer}\n</answer>'
+
+
+_TEXT_FORMAT = {'s1k': _fmt_s1k}
 
 # A dataset prepared on local disk takes precedence over the hub repo. dolma3 must be
 # prepared this way (see dolma3_prep.py): the hub shards are topic-partitioned and
@@ -648,6 +670,11 @@ def worker(stop, q, datasets, args, mix=None):
                 return next(_iters[name])
 
     def _build_clip(name, example):
+        fmt = _TEXT_FORMAT.get(name)
+        if fmt is not None:
+            text = fmt(example)
+            # '' means the example was unusable -> empty steps, so the builder skips it
+            return clip_text(text) if text else ([], '')
         col = _TEXT_DATASETS[name][3]
         return clip_text(example.get(col, example.get('text', '')))
 

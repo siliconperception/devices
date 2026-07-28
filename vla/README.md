@@ -27,12 +27,24 @@ the test split is unlabeled and cannot be scored.
 
 ## Datasets
 
-`--dataset tiny | c4 | web | brt | dolma3`, or `--mix "brt:0.5,web:0.5"` for a
+`--dataset tiny | c4 | web | brt | dolma3 | s1k`, or `--mix "brt:0.5,web:0.5"` for a
 token-proportional mix. All except `dolma3` stream straight from the hub:
 
 ```bash
 python vla.py --dataset web --streaming ...
 ```
+
+`s1k` ([simplescaling/s1K](https://huggingface.co/datasets/simplescaling/s1K)) is the 1000
+curated reasoning examples from the s1 paper. It has no plain text column, so each example
+is rendered to `question<think>\n…\n</think>\n<answer>\n…\n</answer>` — the same shape
+`brt` already uses, so both can be mixed without teaching two formats:
+
+```bash
+python vla.py --mix "brt:0.45,web:0.45,s1k:0.10" ...
+```
+
+It is tiny (~16 MB, ~13 K bytes of trace per example), so on its own it loops over the same
+1000 examples within a few hundred steps — use it as a small slice of a `--mix`.
 
 `dolma3` ([allenai/dolma3_mix-150B-1025](https://huggingface.co/datasets/allenai/dolma3_mix-150B-1025))
 must be downloaded and prepared first — see below.
