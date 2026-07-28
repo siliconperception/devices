@@ -130,6 +130,12 @@ parser.add_argument('--split',         default='validation', choices=['train', '
                          'cannot be scored)')
 parser.add_argument('--limit',         default=None,  type=int,
                     help='--evaluate: score only the first N examples (None = the whole split)')
+parser.add_argument('--init',          default='zero',
+                    choices=['zero', 'gaussian', 'relu'],
+                    help='how the DFF context is seeded before prompting and at every '
+                         'context reset, in all modes (training, --generate, --vis, '
+                         '--evaluate): zeros, standard-normal noise, or relu(randn) '
+                         '(non-negative, ~50%% zeros, matching the steady-state shape)')
 parser.add_argument('--seed',          default=None,  type=int)
 parser.add_argument('--device',        default=None)
 parser.add_argument('--verbose',       default=False, action='store_true',
@@ -314,12 +320,38 @@ class VLAModel(nn.Module, _HubMixin):
 
         self.dff = None   # list of n_layers tensors [B, n_hidden, S, S], detached; None until first step
 
+        # How a fresh context is seeded, set from --init after construction. Runtime
+        # behaviour, not architecture: deliberately not part of the hub config, so it never
+        # affects checkpoint or from_pretrained compatibility.
+        self.init_mode = 'zero'
+
+    def _new_dff(self, B, device):
+        """A fresh DFF context state (--init). Used everywhere a context is started or
+        reset, so train/generate/vis/evaluate all begin from the same distribution.
+
+          zero      zeros
+          gaussian  standard-normal noise
+          relu      relu(randn): non-negative and ~50% exact zeros, the shape the state
+                    actually has in steady state, since it is a ReLU output
+
+        Unit variance needs no scale knob: every step puts the state through `depth`
+        stacked Conv->BatchNorm(affine=False)->ReLU, which drives it onto a fixed attractor
+        (measured: mean 0.43, std 0.71, 52% exact zeros) regardless of how it started. The
+        init is forgotten fast -- relative divergence between a zero and a gaussian start
+        falls to 3% by 20 bytes and to float32 noise by 50 -- so --init only changes what
+        the model sees for the first few dozen bytes of a context."""
+        shape = (B, self.n_hidden, self.S, self.S)
+        if self.init_mode == 'gaussian':
+            return [torch.randn(shape, device=device) for _ in range(self.n_layers)]
+        if self.init_mode == 'relu':
+            return [torch.randn(shape, device=device).relu() for _ in range(self.n_layers)]
+        return [torch.zeros(shape, device=device) for _ in range(self.n_layers)]
+
     def _init_dff(self, B, device):
         dev = torch.device(device)
         if (self.dff is None or len(self.dff) != self.n_layers
                 or self.dff[0].shape[0] != B or self.dff[0].device != dev):
-            self.dff = [torch.zeros(B, self.n_hidden, self.S, self.S, device=device)
-                        for _ in range(self.n_layers)]
+            self.dff = self._new_dff(B, device)
 
     def _tok_grid(self, byte_idx):
         B   = byte_idx.shape[0]
@@ -350,8 +382,10 @@ class VLAModel(nn.Module, _HubMixin):
 
         if flag is not None and flag.any():
             self.dff = [d.clone() for d in self.dff]   # clone before in-place
-            for d in self.dff:
-                d[flag] = 0.0
+            # reseed just the restarting rows, via _new_dff so --init has one definition
+            fresh = self._new_dff(int(flag.sum()), self.dff[0].device)
+            for d, f in zip(self.dff, fresh):
+                d[flag] = f
 
         stack, new_ctx = self._layers(self.dff, self._tok_grid(byte_idx))
         self.dff = [d.detach().clone() for d in stack]   # store for next step (gradient horizon = 1)
@@ -365,8 +399,7 @@ class VLAModel(nn.Module, _HubMixin):
         """Autoregressive generation seeded by prompt_bytes (temperature 0 = argmax)."""
         self.eval()
         dev = next(self.parameters()).device
-        dff = [torch.zeros(1, self.n_hidden, self.S, self.S, device=dev)
-               for _ in range(self.n_layers)]
+        dff = self._new_dff(1, dev)
 
         def _step(b):
             nonlocal dff
@@ -765,6 +798,7 @@ if model.deep_context is not None:
 _summ('decoder', model.decoder, input_size=_dff_shape)
 
 model = model.to(args.device)
+model.init_mode = args.init   # applies to both construction paths (--pretrained and local)
 print(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 'M trainable params')
 
 if args.push:
@@ -863,8 +897,7 @@ def _hs_score(model, examples, device):
     # already ended, so every example finishes on the step that consumes its own last
     # context byte. `logits` then predicts the first byte of the ending.
     ctx, ctx_len = _hs_pad([c for c, _ in rendered], device)
-    dff    = [torch.zeros(E, model.n_hidden, model.S, model.S, device=device)
-              for _ in range(model.n_layers)]
+    dff    = model._new_dff(E, device)
     logits = torch.zeros(E, 256, device=device)
     for t in range(int(ctx_len.max())):
         live = (t < ctx_len).view(E, 1, 1, 1)
@@ -1008,8 +1041,7 @@ if args.vis:
     _ticker = _ptext          # ticker-tape display buffer (trailing _VIS_WIN chars)
     _ep_len = 0               # chars generated in the current episode (length cap)
     _nstep  = 0
-    dff     = [torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
-               for _ in range(model.n_layers)]
+    dff     = model._new_dff(1, _dev)
 
     while not _vis_exit:
         with torch.no_grad():
@@ -1029,8 +1061,7 @@ if args.vis:
             if nxt == END or _ep_len >= _VIS_WIN:
                 if nxt == END:
                     _ticker += _vc(END)    # mark the episode break in the ticker
-                dff    = [torch.zeros(1, model.n_hidden, model.S, model.S, device=_dev)
-                          for _ in range(model.n_layers)]
+                dff    = model._new_dff(1, _dev)
                 _queue = list(_prompt)     # episode over: reset state, restart prompt
                 _b     = _queue.pop(0)
                 _ep_len = 0
