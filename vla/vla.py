@@ -61,6 +61,12 @@ parser.add_argument('--n_layers',      default=3,     type=int,
                          '1 = original single-layer behavior')
 parser.add_argument('--kernel',        default=3,     type=int,
                     help='conv kernel size (odd integer)')
+parser.add_argument('--skip',          default=False, action='store_true',
+                    help='inject the token encoding into every layer, not just layer 1: with '
+                         '--n_layers>1 each deep layer sees input + previous layer + its own '
+                         'DFF instead of previous layer + DFF. No new parameters (the same '
+                         'text_proj grid is reused), so it can be toggled on an existing '
+                         'checkpoint. No effect when --n_layers 1')
 # training
 parser.add_argument('--dataset',       default='tiny',
                     help='tiny | c4 | web | brt | dolma3 | s1k (s1k is only 1000 reasoning '
@@ -92,11 +98,13 @@ parser.add_argument('--weight_decay',  default=0.0,   type=float,
 # learning rate: all --schedule modes are driven by this one set. lr_max is the peak
 # (and the optimizer base lr); lr_min is the floor; lr_warmup / lr_period are step counts.
 parser.add_argument('--schedule',      default='const',
-                    choices=['const', 'linear', 'triangle', 'cosine'],
-                    help='lr schedule: "const" (fixed --lr_max), "linear" (ramp --lr_min->'
-                         '--lr_max over --lr_period, then hold), "triangle" (ramp --lr_min->'
-                         '--lr_max over --lr_warmup, then --lr_max->--lr_min over --lr_period) '
-                         'or "cosine" (cyclic --lr_min<->--lr_max, --lr_period steps/cycle)')
+                    choices=['const', 'warmup', 'linear', 'triangle', 'cosine'],
+                    help='lr schedule: "const" (fixed --lr_max), "warmup" (hold --lr_min for '
+                         '--lr_warmup steps, then jump to --lr_max and hold), "linear" (ramp '
+                         '--lr_min->--lr_max over --lr_period, then hold), "triangle" (ramp '
+                         '--lr_min->--lr_max over --lr_warmup, then --lr_max->--lr_min over '
+                         '--lr_period) or "cosine" (cyclic --lr_min<->--lr_max, --lr_period '
+                         'steps/cycle)')
 parser.add_argument('--lr_min',        default=1e-6,  type=float,
                     help='minimum / floor learning rate (linear|triangle|cosine)')
 parser.add_argument('--lr_max',        default=0.001, type=float,
@@ -107,7 +115,7 @@ parser.add_argument('--lr_mult',       default=1.0,   type=float,
                          '--lr_mult**(k-1), so with --lr_mult 10 --n_layers 3 the three '
                          'layers use lr, 10*lr, 100*lr. Default 1.0 (all layers equal)')
 parser.add_argument('--lr_warmup',     default=1000,  type=int,
-                    help='ramp-up length in steps (triangle)')
+                    help='ramp-up length in steps (warmup|triangle)')
 parser.add_argument('--lr_period',     default=10000, type=int,
                     help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle')
 # I/O
@@ -186,7 +194,7 @@ _mix = _parse_mix(args.mix)
 
 # ── restore architecture args from checkpoint ─────────────────────────────────
 
-_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel')
+_ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 'skip')
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
@@ -294,12 +302,13 @@ class VLAModel(nn.Module, _HubMixin):
     to next-token logits. n_layers stacks (ContextCNN + feedback) units in series,
     each carrying its own DFF state."""
     def __init__(self, n_hidden, depth, kernel, S,
-                 c_text=None, n_layers=1):
+                 c_text=None, n_layers=1, skip=False):
         super().__init__()
         self.S          = S
         self.n_hidden   = n_hidden
         self.c_text     = c_text if c_text is not None else n_hidden
         self.n_layers   = max(1, n_layers)    # stacked (ContextCNN + feedback) layers (see --n_layers)
+        self.skip       = bool(skip)          # feed the token encoding to every layer (see --skip)
 
         self.tok_embed = nn.Embedding(256, self.c_text)   # current token → c_text channels
         self.context   = ContextCNN(n_hidden, depth, kernel)
@@ -362,13 +371,19 @@ class VLAModel(nn.Module, _HubMixin):
     def _layers(self, dff, tok_grid):
         """Run the stack of n_layers (ContextCNN + feedback) units once.
         dff: list of n_layers tensors [B, n_hidden, S, S]. Layer 0 takes the token injection;
-        each deeper layer takes the previous layer's output summed with its own DFF state.
+        each deeper layer takes the previous layer's output summed with its own DFF state,
+        plus (with --skip) the same token injection layer 0 got, so deep layers see the
+        current token directly instead of only through the layers below them.
         Returns (new_dff_list, last_layer_output [B, n_hidden, S, S]). No detach here — the
         caller detaches the returned list to bound the time horizon."""
-        o = self.context(dff[0] + self.text_proj(tok_grid))
+        tok  = self.text_proj(tok_grid)        # [B, n_hidden, S, S], computed once
+        o    = self.context(dff[0] + tok)
         outs = [o]
         for li in range(self.n_layers - 1):
-            o = self.deep_context[li](dff[li + 1] + self.deep_proj[li](o))
+            x = dff[li + 1] + self.deep_proj[li](o)
+            if self.skip:
+                x = x + tok
+            o = self.deep_context[li](x)
             outs.append(o)
         return outs, o
 
@@ -776,7 +791,8 @@ if args.pretrained:
     model = VLAModel.from_pretrained(args.hub_repo, revision=args.revision)
     _cfg  = getattr(model, '_hub_mixin_config', None) or {}
     for _k, _a in (('context', 'S'), ('n_hidden', 'n_hidden'), ('c_text', 'c_text'),
-                   ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel')):
+                   ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel'),
+                   ('skip', 'skip')):
         if _a in _cfg:
             setattr(args, _k, _cfg[_a])
     print('pretrained config', _cfg)
@@ -793,6 +809,7 @@ else:
         S         = args.context,
         c_text    = args.c_text,
         n_layers  = args.n_layers,
+        skip      = args.skip,
     )
 
     if _loaded_ckpt is not None:
@@ -820,7 +837,8 @@ _summ('text_proj', model.text_proj, input_size=(1, model.c_text, args.context, a
 _summ('context (layer 1)' if model.n_layers > 1 else 'context',
       model.context, input_size=_dff_shape)
 if model.deep_context is not None:
-    _summ(f'deep_context x{model.n_layers - 1} (layers 2..{model.n_layers})',
+    _summ(f'deep_context x{model.n_layers - 1} (layers 2..{model.n_layers}'
+          f'{", token skip input" if model.skip else ""})',
           model.deep_context[0], input_size=_dff_shape)
 _summ('decoder', model.decoder, input_size=_dff_shape)
 
@@ -1232,6 +1250,8 @@ _period  = max(1, args.lr_period)
 def _lr_factor(step):
     if args.schedule == 'const':                       # fixed lr_max
         lr = _hi
+    elif args.schedule == 'warmup':                    # hold lr_min for lr_warmup steps, then step to lr_max
+        lr = _lo if step < _warm else _hi
     elif args.schedule == 'linear':                    # ramp lr_min -> lr_max over lr_period, then hold
         lr = _lo + (_hi - _lo) * min(step / _period, 1.0)
     elif args.schedule == 'triangle':                  # up over lr_warmup, down over lr_period, then hold lr_min
@@ -1390,14 +1410,17 @@ try:
 
         if (i % args.monitor) == 0:
             _dmean, _dstd, _dmax, _dzero = _dff_stats(model.dff)
+            # batch is logged per step, not just in the ARGS line: a run resumed from a
+            # checkpoint at a different --batch appends to a new log, so chart.py needs the
+            # batch size that produced each point (loss/grad both scale with it).
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
                  'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
-                 'dff_zeros {:8.5f}').format(
+                 'dff_zeros {:8.5f} batch {:6d}').format(
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
                 np.mean(garr[-args.monitor:]),
                 scheduler.get_last_lr()[0],
-                _dmean, _dstd, _dmax, _dzero,
+                _dmean, _dstd, _dmax, _dzero, args.batch,
             )
             print(s)
             with open(args.log, 'a') as f:

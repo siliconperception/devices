@@ -37,10 +37,11 @@ batch_size=0
 
 # STEP lines look like:
 #   STEP 100 wall <date> <time> loss <v> grad <v> lr <v> dff_mean <v> dff_std <v> \
-#        dff_max <v> dff_zeros <v> a_std <v> i_std <v>  [loss_txt <v> loss_av <v>]
+#        dff_max <v> dff_zeros <v> batch <v> a_std <v> i_std <v>  [loss_txt <v> loss_av <v>]
 # Parse each numeric field by name so the layout is robust to the date/time tokens
 # and to optional mix-mode fields.
-_FIELDS = ['loss', 'grad', 'lr', 'dff_mean', 'dff_std', 'dff_max', 'dff_zeros', 'a_std', 'i_std']
+_FIELDS = ['batch', 'loss', 'grad', 'lr', 'dff_mean', 'dff_std', 'dff_max', 'dff_zeros',
+           'a_std', 'i_std']
 _NUM    = r'(-?[\d.]+(?:[eE][-+]?\d+)?)'
 
 def parselog(fn):
@@ -79,6 +80,12 @@ mean = d['dff_mean']
 std  = d['dff_std']
 dmax = d['dff_max']
 zero = d['dff_zeros']
+# per-step batch size. Logs written before the STEP line carried it have no batch field
+# (parsed as 0), so fall back to the single value scraped from the ARGS line.
+bs = d['batch']
+if not bs.any():
+    bs = np.full(step.shape, float(batch_size))
+print('batch', 'constant' if bs.min() == bs.max() else f'{bs.min():.0f}..{bs.max():.0f}')
 
 # total wall-clock elapsed and average training steps/sec (from the STEP wall timestamps)
 title = None
@@ -147,6 +154,7 @@ if args.verbose:
     ax3 = fig.add_subplot(nplots,1,3, sharex=ax1)
     ax3b = ax3.twinx()
     ax4 = fig.add_subplot(nplots,1,4, sharex=ax1)
+    ax4b = ax4.twinx()   # batch size shares the lr panel: both are step-wise training knobs
     ax5 = fig.add_subplot(nplots,1,5, sharex=ax1)
     ax6 = fig.add_subplot(nplots,1,6, sharex=ax1)
     #ax3.set_ylim(bottom=0, top=20)
@@ -155,6 +163,9 @@ if args.verbose:
     ax3b.plot(step, mean, '-b', linewidth=1.0,alpha=0.5)
     ax4.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.7f'))
     ax4.plot(step, lr, '-c', linewidth=2.0,alpha=0.5)
+    # piecewise constant (it only changes when a run is resumed at a different --batch)
+    ax4b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
+    ax4b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
     ax5.plot(step, dmax, '-m', linewidth=2.0,alpha=0.5)
     ax6.set_ylim(bottom=0, top=1)
     ax6.plot(step, zero, '-g', linewidth=2.0,alpha=0.5)
@@ -162,9 +173,10 @@ if args.verbose:
     ax3.set_ylabel('std', color='r')
     ax3b.set_ylabel('mean', color='b')
     ax4.set_ylabel('lr', color='c')
+    ax4b.set_ylabel('batch', color='orange')
     ax5.set_ylabel('dff_max', color='m')
     ax6.set_ylabel('sparsity', color='g')
-    axes += [ax3, ax3b, ax4, ax5, ax6]
+    axes += [ax3, ax3b, ax4, ax4b, ax5, ax6]
 
 # only the bottom subplot carries the shared x-axis label and tick labels
 for ax in axes[:-1]:
