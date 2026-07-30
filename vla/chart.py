@@ -131,6 +131,7 @@ if title:
     fig.suptitle(title)
 ax1 = fig.add_subplot(nplots,1,1)
 ax2 = fig.add_subplot(nplots,1,2, sharex=ax1)
+ax2b = ax2.twinx()   # batch size overlays grad: the two move together when --batch changes
 #ax1.set_ylim(bottom=0, top=np.log(50257))
 ax1.set_ylim(bottom=0, top=ylim_top(loss))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
@@ -139,9 +140,13 @@ ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
 #ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
 ax2.plot(step, grad, '.y', linewidth=0.1,alpha=1.0, markersize=1)
 ax2.set_ylim(bottom=0, top=ylim_top(grad))
+# piecewise constant (it only changes when a run is resumed at a different --batch)
+ax2b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
+ax2b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
 
 ax1.set_ylabel('loss', color='w')
 ax2.set_ylabel('grad', color='y')
+ax2b.set_ylabel('batch size', color='orange')
 
 # y axis: minor ticks between the majors, and a hairline major gridline in the trace's own
 # colour, so the grid reads as part of its plot instead of competing with the samples
@@ -149,12 +154,13 @@ for ax, color in ((ax1, 'w'), (ax2, 'y')):
     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax.grid(axis='y', which='major', color=color, linewidth=1, alpha=0.2)
 
-axes = [ax1, ax2]
+# twins are tracked separately: twinx hides their x axis, so the shared x-axis label has to
+# land on a host subplot, never on a twin
+axes, twins = [ax1, ax2], [ax2b]
 if args.verbose:
     ax3 = fig.add_subplot(nplots,1,3, sharex=ax1)
     ax3b = ax3.twinx()
     ax4 = fig.add_subplot(nplots,1,4, sharex=ax1)
-    ax4b = ax4.twinx()   # batch size shares the lr panel: both are step-wise training knobs
     ax5 = fig.add_subplot(nplots,1,5, sharex=ax1)
     ax6 = fig.add_subplot(nplots,1,6, sharex=ax1)
     #ax3.set_ylim(bottom=0, top=20)
@@ -163,9 +169,6 @@ if args.verbose:
     ax3b.plot(step, mean, '-b', linewidth=1.0,alpha=0.5)
     ax4.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.7f'))
     ax4.plot(step, lr, '-c', linewidth=2.0,alpha=0.5)
-    # piecewise constant (it only changes when a run is resumed at a different --batch)
-    ax4b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
-    ax4b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
     ax5.plot(step, dmax, '-m', linewidth=2.0,alpha=0.5)
     ax6.set_ylim(bottom=0, top=1)
     ax6.plot(step, zero, '-g', linewidth=2.0,alpha=0.5)
@@ -173,15 +176,15 @@ if args.verbose:
     ax3.set_ylabel('std', color='r')
     ax3b.set_ylabel('mean', color='b')
     ax4.set_ylabel('lr', color='c')
-    ax4b.set_ylabel('batch', color='orange')
     ax5.set_ylabel('dff_max', color='m')
     ax6.set_ylabel('sparsity', color='g')
-    axes += [ax3, ax3b, ax4, ax4b, ax5, ax6]
+    axes += [ax3, ax4, ax5, ax6]
+    twins += [ax3b]
 
 # only the bottom subplot carries the shared x-axis label and tick labels
-for ax in axes[:-1]:
+for ax in axes[:-1] + twins:
     ax.tick_params(labelbottom=False)
-axes[-1].set_xlabel('batch')
+axes[-1].set_xlabel('step')
 
 fig.tight_layout()
 plt.show()

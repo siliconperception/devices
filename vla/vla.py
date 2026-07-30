@@ -139,7 +139,7 @@ parser.add_argument('--split',         default='validation', choices=['train', '
                          'cannot be scored)')
 parser.add_argument('--limit',         default=None,  type=int,
                     help='--evaluate: score only the first N examples (None = the whole split)')
-parser.add_argument('--init',          default='zero',
+parser.add_argument('--init',          default='relu',
                     choices=['zero', 'gaussian', 'relu'],
                     help='how the DFF context is seeded before prompting and at every '
                          'context reset, in all modes (training, --generate, --vis, '
@@ -333,7 +333,7 @@ class VLAModel(nn.Module, _HubMixin):
         # How a fresh context is seeded, set from --init after construction. Runtime
         # behaviour, not architecture: deliberately not part of the hub config, so it never
         # affects checkpoint or from_pretrained compatibility.
-        self.init_mode = 'zero'
+        self.init_mode = 'relu'
 
     def _new_dff(self, B, device):
         """A fresh DFF context state (--init). Used everywhere a context is started or
