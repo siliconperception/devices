@@ -31,6 +31,9 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
 parser.add_argument('--verbose', default=False, action='store_true')
+parser.add_argument('--outliers', default=False, action='store_true',
+                    help='scale the loss and grad panels to every sample, including the '
+                         'startup transient and isolated spikes that are trimmed by default')
 args = parser.parse_args()
 print(args)
 batch_size=0
@@ -105,18 +108,36 @@ print('title:', title)
 
 #grad = np.clip(grad, 0, 10)
 
-def ylim_top(a):
-    """Top y-limit that hides leading startup outliers. Training curves open with a large
-    transient (the first gradient is ~40 before it settles near ~5), which otherwise forces
-    the whole axis to that spike and flattens the rest. Drop initial points whose step to the
-    next point exceeds the series mean, then scale the top to the max of what remains (+5%
-    headroom). A smooth series (e.g. loss) drops nothing, so its top still covers every point."""
+PCT = 99.9   # share of samples the loss/grad panels are guaranteed to cover
+
+def ylim_top(a, name=''):
+    """Top y-limit that hides outliers, so the axis is scaled by the body of the run instead
+    of by its worst few samples. Two kinds of outlier get trimmed:
+
+      startup transient  training opens with a large transient (grad starts in the thousands
+                         before settling near ~2). Drop initial points whose step to the next
+                         point exceeds the series mean.
+      isolated spikes    a single bad batch mid-run leaves a lone spike many times the local
+                         value. Drop everything past the PCT'th percentile of what remains.
+
+    The top is then the largest surviving sample (+5% headroom), so it is always a real data
+    value. A clean series drops nothing and its top still covers every point. --outliers skips
+    both trims and scales to the raw max."""
     if a.size == 0:
         return None
+    if args.outliers:
+        return float(a.max()) * 1.05
     thr, i = a.mean(), 0
     while i + 1 < a.size and abs(a[i + 1] - a[i]) > thr:
         i += 1
-    return float(a[i:].max()) * 1.05
+    b = a[i:]
+    keep = b[b <= np.percentile(b, PCT)]
+    top = float(keep.max() if keep.size else b.max()) * 1.05
+    hidden = int((a > top).sum())
+    if hidden:
+        print(f'{name}: {hidden}/{a.size} samples above the axis top {top:.4g} '
+              f'(max {a.max():.4g}), use --outliers to show them')
+    return top
 
 window_size = 10
 weights = np.ones(window_size) / window_size
@@ -133,13 +154,13 @@ ax1 = fig.add_subplot(nplots,1,1)
 ax2 = fig.add_subplot(nplots,1,2, sharex=ax1)
 ax2b = ax2.twinx()   # batch size overlays grad: the two move together when --batch changes
 #ax1.set_ylim(bottom=0, top=np.log(50257))
-ax1.set_ylim(bottom=0, top=ylim_top(loss))
+ax1.set_ylim(bottom=0, top=ylim_top(loss, 'loss'))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
 #ax1.plot(step, loss_mean, '-w', linewidth=1,alpha=0.8)
 ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
 #ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
 ax2.plot(step, grad, '.y', linewidth=0.1,alpha=1.0, markersize=1)
-ax2.set_ylim(bottom=0, top=ylim_top(grad))
+ax2.set_ylim(bottom=0, top=ylim_top(grad, 'grad'))
 # piecewise constant (it only changes when a run is resumed at a different --batch)
 ax2b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
 ax2b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
