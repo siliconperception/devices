@@ -35,12 +35,26 @@ STX_TEXT  = '<STX>'   # how START renders in displayed text
 ETX_TEXT  = '<ETX>'   # how END renders in displayed text
 
 
+DOT_TEXT  = '\xb7'    # how any other unprintable byte renders
+NULL_TEXT = '_'       # how NULL renders
+
+_ESCAPES  = {'\n': '\\n', '\t': '\\t', '\r': '\\r'}
+
+
 def _printable(s):
-    """Render model text for display: START/END as <STX>/<ETX>, whitespace escaped,
-    any remaining unprintable bytes dropped."""
-    s = (s.replace(chr(START), STX_TEXT).replace(chr(END), ETX_TEXT)
-          .replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r'))
-    return ''.join(c for c in s if c.isprintable())
+    """Render model text for display: START/END as <STX>/<ETX>, NULL as '_',
+    whitespace escaped, any other unprintable character as '·'. Matches _vc(),
+    the --vis renderer, so all three modes display the same markers."""
+    out = []
+    for c in s:
+        o = ord(c)
+        if   o == START:      out.append(STX_TEXT)
+        elif o == END:        out.append(ETX_TEXT)
+        elif o == NULL:       out.append(NULL_TEXT)
+        elif c in _ESCAPES:   out.append(_ESCAPES[c])
+        elif c.isprintable(): out.append(c)
+        else:                 out.append(DOT_TEXT)
+    return ''.join(out)
 
 
 # ── args ──────────────────────────────────────────────────────────────────────
@@ -127,7 +141,8 @@ parser.add_argument('--monitor',       default=100,   type=int)
 parser.add_argument('--generate',      default=False, action='store_true',
                     help='one-shot: load checkpoint, generate from START+prompt, print, exit (no dataset/training)')
 parser.add_argument('--n',             default=200,   type=int,
-                    help='tokens to generate per sample')
+                    help='tokens to generate per sample; in --vis it caps the episode '
+                         'length before the state resets and the prompt restarts')
 parser.add_argument('--prompt',        default='',
                     help='generation prompt; START (0x02) is always prepended, so leave '
                          'empty to generate from START alone')
@@ -412,7 +427,8 @@ class VLAModel(nn.Module, _HubMixin):
 
     @torch.no_grad()
     def generate(self, prompt_bytes, n_tokens, temperature=1.0):
-        """Autoregressive generation seeded by prompt_bytes (temperature 0 = argmax)."""
+        """Autoregressive generation seeded by prompt_bytes (temperature 0 = argmax).
+        Stops at the first END, which is included in the output so callers render <ETX>."""
         self.eval()
         dev = next(self.parameters()).device
         dff = self._new_dff(1, dev)
@@ -447,6 +463,7 @@ class VLAModel(nn.Module, _HubMixin):
             prob = F.softmax(logits[0] / max(temperature, 1e-6), dim=-1)
             bval = torch.multinomial(prob, 1).item()
             if bval == END:
+                out.append(bval)   # keep the terminator so callers render <ETX>
                 break
             if bval != NULL:
                 out.append(bval)
@@ -1024,15 +1041,18 @@ if args.evaluate:
 
 _vis_exit        = False
 _vis_stats_line  = 'initializing...'
-_VIS_WIN         = 80
+_VIS_WIN         = 80   # ticker-tape display width, in characters (display only)
 
 
 def _vc(b):
+    """Byte-wise renderer for the vis ticker. Same markers as _printable(), but
+    byte-wise (no UTF-8 decode) and with '$'/'\\' masked out: the ticker is drawn
+    as matplotlib text, where those trigger mathtext parsing."""
     if b == START: return STX_TEXT
     if b == END:   return ETX_TEXT
-    if b == NULL:  return '_'
-    c = chr(b) if 32 <= b < 127 else '\xb7'
-    return '\xb7' if c in '$\\' else c
+    if b == NULL:  return NULL_TEXT
+    c = chr(b) if 32 <= b < 127 else DOT_TEXT
+    return DOT_TEXT if c in '$\\' else c
 
 
 if args.vis:
@@ -1084,7 +1104,7 @@ if args.vis:
     _queue  = list(_prompt)   # remaining prompt bytes to inject as new tokens
     _b      = _queue.pop(0)   # current token being injected
     _ticker = _ptext          # ticker-tape display buffer (trailing _VIS_WIN chars)
-    _ep_len = 0               # chars generated in the current episode (length cap)
+    _ep_len = 0               # chars generated in the current episode (capped by --n)
     _nstep  = 0
     dff     = model._new_dff(1, _dev)
 
@@ -1103,7 +1123,7 @@ if args.vis:
             _b = _queue.pop(0)             # still draining the prompt
         else:
             nxt = int(torch.multinomial(prob, 1).item())
-            if nxt == END or _ep_len >= _VIS_WIN:
+            if nxt == END or _ep_len >= args.n:
                 if nxt == END:
                     _ticker += _vc(END)    # mark the episode break in the ticker
                 dff    = model._new_dff(1, _dev)
