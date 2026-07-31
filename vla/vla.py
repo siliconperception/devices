@@ -16,6 +16,7 @@ from torch.nn import functional as F
 import torchinfo
 import numpy as np
 import argparse
+import collections
 import glob
 import os
 import queue
@@ -30,6 +31,10 @@ import matplotlib.pyplot as plt
 NULL      = 0x00
 START     = 0x02
 END       = 0x03
+
+# length of the GEN sample printed each checkpoint interval during training. Fixed, not
+# --n: --n is the length of a one-shot --generate run and nothing else.
+_GEN_SAMPLE = 200
 
 STX_TEXT  = '<STX>'   # how START renders in displayed text
 ETX_TEXT  = '<ETX>'   # how END renders in displayed text
@@ -112,13 +117,17 @@ parser.add_argument('--weight_decay',  default=0.0,   type=float,
 # learning rate: all --schedule modes are driven by this one set. lr_max is the peak
 # (and the optimizer base lr); lr_min is the floor; lr_warmup / lr_period are step counts.
 parser.add_argument('--schedule',      default='const',
-                    choices=['const', 'warmup', 'linear', 'triangle', 'cosine'],
+                    choices=['const', 'warmup', 'linear', 'triangle', 'cosine', 'plat'],
                     help='lr schedule: "const" (fixed --lr_max), "warmup" (hold --lr_min for '
                          '--lr_warmup steps, then jump to --lr_max and hold), "linear" (ramp '
                          '--lr_min->--lr_max over --lr_period, then hold), "triangle" (ramp '
                          '--lr_min->--lr_max over --lr_warmup, then --lr_max->--lr_min over '
-                         '--lr_period) or "cosine" (cyclic --lr_min<->--lr_max, --lr_period '
-                         'steps/cycle)')
+                         '--lr_period), "cosine" (cyclic --lr_min<->--lr_max, --lr_period '
+                         'steps/cycle) or "plat" (start at --lr_max; every --checkpoint steps '
+                         'fit a line to the loss over the last --lr_period steps and multiply '
+                         'the lr by --lr_rate if the slope is non-negative, floor at --lr_min; '
+                         'a decay clears the window, so the lr drops at most once per '
+                         '--lr_period steps)')
 parser.add_argument('--lr_min',        default=1e-6,  type=float,
                     help='minimum / floor learning rate (linear|triangle|cosine)')
 parser.add_argument('--lr_max',        default=0.001, type=float,
@@ -131,7 +140,12 @@ parser.add_argument('--lr_mult',       default=1.0,   type=float,
 parser.add_argument('--lr_warmup',     default=1000,  type=int,
                     help='ramp-up length in steps (warmup|triangle)')
 parser.add_argument('--lr_period',     default=10000, type=int,
-                    help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle')
+                    help='schedule length in steps: linear ramp / triangle ramp-down / cosine cycle '
+                         '/ plat slope window (steps of loss history the line is fit to, and '
+                         'the minimum gap between two plat decays)')
+parser.add_argument('--lr_rate',       default=0.5,   type=float,
+                    help='--schedule plat decay factor: lr *= --lr_rate when the fitted loss '
+                         'slope over the --lr_period window is non-negative')
 # I/O
 parser.add_argument('--load',          default=None)
 parser.add_argument('--save',          default='checkpoint.pt')
@@ -141,8 +155,9 @@ parser.add_argument('--monitor',       default=100,   type=int)
 parser.add_argument('--generate',      default=False, action='store_true',
                     help='one-shot: load checkpoint, generate from START+prompt, print, exit (no dataset/training)')
 parser.add_argument('--n',             default=200,   type=int,
-                    help='tokens to generate per sample; in --vis it caps the episode '
-                         'length before the state resets and the prompt restarts')
+                    help='tokens to generate for --generate. Nothing else reads it: --vis '
+                         'streams until the window is closed, and the training-loop GEN '
+                         'samples are a fixed length')
 parser.add_argument('--prompt',        default='',
                     help='generation prompt; START (0x02) is always prepended, so leave '
                          'empty to generate from START alone')
@@ -213,6 +228,8 @@ _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 's
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
+_start_lr    = None              # lr the checkpoint was saved at (--schedule plat resume)
+_start_plat  = None              # binned loss window carried across a --schedule plat resume
 if args.pretrained and args.load is not None:
     # --pretrained overrides --load: the hub repo carries both weights and config.json,
     # so a local checkpoint would only be half-used (its saved_args then foreign weights).
@@ -224,6 +241,9 @@ if args.load is not None:
         # older checkpoints may predate an arch arg → keep the current default for it
         setattr(args, _k, _loaded_ckpt['saved_args'].get(_k, getattr(args, _k)))
     _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
+    # read here: the ckpt is freed before the scheduler is built
+    _start_lr   = _loaded_ckpt.get('lr')
+    _start_plat = _loaded_ckpt.get('plat')
 
 if args.c_text is None:          # default token embedding width to n_hidden
     args.c_text = args.n_hidden
@@ -1104,7 +1124,6 @@ if args.vis:
     _queue  = list(_prompt)   # remaining prompt bytes to inject as new tokens
     _b      = _queue.pop(0)   # current token being injected
     _ticker = _ptext          # ticker-tape display buffer (trailing _VIS_WIN chars)
-    _ep_len = 0               # chars generated in the current episode (capped by --n)
     _nstep  = 0
     dff     = model._new_dff(1, _dev)
 
@@ -1123,18 +1142,17 @@ if args.vis:
             _b = _queue.pop(0)             # still draining the prompt
         else:
             nxt = int(torch.multinomial(prob, 1).item())
-            if nxt == END or _ep_len >= args.n:
-                if nxt == END:
-                    _ticker += _vc(END)    # mark the episode break in the ticker
+            # --n does not apply here: --vis streams forever, so an episode runs until the
+            # model emits END on its own and the next one starts from the prompt again.
+            if nxt == END:
+                _ticker += _vc(END)        # mark the episode break in the ticker
                 dff    = model._new_dff(1, _dev)
                 _queue = list(_prompt)     # episode over: reset state, restart prompt
                 _b     = _queue.pop(0)
-                _ep_len = 0
                 _ticker += _ptext          # new episode opens with <STX> again
             else:
                 if nxt != NULL:
                     _ticker += _vc(nxt)
-                    _ep_len += 1
                 _b = nxt
             _ticker = _ticker[-_VIS_WIN:]  # slide + bound the visible window (ticker tape)
 
@@ -1286,13 +1304,64 @@ def _lr_factor(step):
         lr = _lo + (_hi - _lo) * phase
     return lr / _hi
 
-scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_factor)
+# "plat" is not a closed-form schedule: the lr responds to the loss curve, so it is
+# driven by _plat_update() in the training loop instead of a torch scheduler.
+_plateau = args.schedule == 'plat'
+
+# per-group floor, scaled so --lr_mult keeps its ratio as the lr decays
+_min_lrs = [args.lr_min * (_g['lr'] / _hi) for _g in optimizer.param_groups]
+
+# Loss history for the slope fit, binned one point per --checkpoint interval rather
+# than one per step. --lr_period is meant to be long (1e6 steps), and binning is
+# statistically free: the OLS slope's standard error is sigma*sqrt(12)/(T*sqrt(n)), so
+# averaging C steps into one point cuts n by C and sigma by sqrt(C) — same SE, same
+# test. It also keeps the window at ~1000 floats instead of 1e6, small enough to ride
+# along in the checkpoint so a resumed run doesn't start its window over.
+_plat_bins = max(2, _period // max(1, args.checkpoint))   # window length, in intervals
+_plat_loss = collections.deque(_start_plat or [], maxlen=_plat_bins)
+
+if _plateau and args.lr_period < 2 * args.checkpoint:
+    # the window can never be finer than one point per --checkpoint interval
+    print(f'WARNING: --lr_period {args.lr_period} < 2*--checkpoint {args.checkpoint}; '
+          f'plat fits {_plat_bins} bins = {_plat_bins * args.checkpoint} steps')
+
+def _plat_update():
+    """Fit a line to the binned loss window; decay the lr if it is not going down.
+
+    Called once per --checkpoint interval. The fit needs a full window (--lr_period
+    steps of history), and a decay clears it — that is the cooldown: a single plateau
+    cannot stack decays from overlapping windows, so the lr falls at most one
+    --lr_rate factor per --lr_period steps. A non-negative slope means the loss has
+    stalled (or is rising) across the whole window, so every group's lr is multiplied
+    by --lr_rate, floored at its --lr_min. Returns (fitted change over the window, lr,
+    decayed) for logging, or None while the window is still filling.
+    """
+    if len(_plat_loss) < _plat_bins:
+        return None
+    y     = np.asarray(_plat_loss, dtype=np.float64)
+    slope = np.polyfit(np.arange(len(y), dtype=np.float64), y, 1)[0]
+    decay = slope >= 0.0
+    if decay:
+        for _g, _min in zip(optimizer.param_groups, _min_lrs):
+            _g['lr'] = max(_min, _g['lr'] * args.lr_rate)
+        _plat_loss.clear()                    # cooldown: refill before deciding again
+    # report the fitted total change across the window (nats), not the per-bin slope:
+    # at these window sizes the slope itself is ~1e-9 and unreadable
+    return slope * (len(y) - 1), optimizer.param_groups[0]['lr'], decay
+
+scheduler = (None if _plateau else
+             torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_factor))
 
 # On resume, fast-forward the schedule to the checkpoint's step so the lr at the first
 # continued step matches where the previous run left off (LambdaLR is stateless in step).
-# Update both the live optimizer lr and the scheduler's cached last_lr (what get_last_lr
-# reports in the STEP line).
-if _start_step:
+# Update the live optimizer lr and the scheduler's cached last_lr (what the STEP line
+# reports). "plat" has no closed form in step, so it instead picks up the lr the
+# checkpoint was saved at (its loss window still refills from scratch).
+if _plateau:
+    if _start_step and _start_lr:
+        for _g, _min in zip(optimizer.param_groups, _min_lrs):
+            _g['lr'] = max(_min, _start_lr * (_g['lr'] / _hi))
+elif _start_step:
     scheduler.last_epoch = _start_step
     _lrs = [_base * _lr_factor(_start_step) for _base in scheduler.base_lrs]
     for _g, _lr in zip(optimizer.param_groups, _lrs):
@@ -1346,11 +1415,28 @@ def _diag(model):
 
 larr, garr = [], []
 i = _start_step        # continue the step count from the resumed checkpoint (0 if fresh)
+_plat_sum, _plat_n = 0.0, 0    # running mean of this interval's losses, for the plat bin
 
 try:
     while True:
         # ── checkpoint / generation sample ───────────────────────────────────
         if (i % args.checkpoint) == 0:
+            # --schedule plat: bin this interval's losses, then take one lr decision from
+            # the slope over the whole window (see _plat_update). Ahead of the save below,
+            # so the checkpoint carries the post-decision lr and window.
+            if _plateau:
+                if _plat_n:
+                    _plat_loss.append(_plat_sum / _plat_n)
+                _plat_sum, _plat_n = 0.0, 0
+                _pu = _plat_update()
+                if _pu is not None:
+                    d = ('PLAT step {:10} fit {:+12.6f} lr {:10.9f} bins {}/{} {}'
+                         ).format(i, _pu[0], _pu[1], len(_plat_loss), _plat_bins,
+                                  'DECAY' if _pu[2] else 'hold')
+                    print(d)
+                    with open(args.log, 'a') as f:
+                        print(d, file=f)
+
             _finite = all(torch.isfinite(p).all() for p in model.state_dict().values()
                           if p.is_floating_point())
             if _finite:
@@ -1361,8 +1447,13 @@ try:
                 if args.log and args.log != os.devnull and os.path.exists(args.log):
                     with open(args.log) as _lf:
                         _log_text = _lf.read()
+                # 'lr'/'plat' carry --schedule plat across a resume: it has no closed form
+                # to fast-forward, so it picks up the lr it was saved at and keeps filling
+                # the same binned loss window instead of starting it over.
                 torch.save({'saved_args': vars(args), 'state_dict': model.state_dict(),
-                            'log': _log_text, 'step': i}, args.save)
+                            'log': _log_text, 'step': i,
+                            'lr': optimizer.param_groups[0]['lr'],
+                            'plat': list(_plat_loss) if _plateau else None}, args.save)
             else:
                 print(f'WARNING: non-finite params at step {i}; skipping checkpoint save')
 
@@ -1376,7 +1467,7 @@ try:
 
             model.eval()
             prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
-            out    = model.generate(prompt, args.n, temperature=args.temperature)
+            out    = model.generate(prompt, _GEN_SAMPLE, temperature=args.temperature)
             gen_text = _printable(bytes(prompt + out).decode('utf-8', errors='replace'))
             lines = [f'GEN: {gen_text}']
             if _tsample:                       # a recent training-text example
@@ -1427,6 +1518,8 @@ try:
 
         # ── monitor ───────────────────────────────────────────────────────────
         larr.append(loss.item())
+        if _plateau:
+            _plat_sum, _plat_n = _plat_sum + larr[-1], _plat_n + 1   # binned at --checkpoint
 
         if (i % args.monitor) == 0:
             _dmean, _dstd, _dmax, _dzero = _dff_stats(model.dff)
@@ -1439,7 +1532,7 @@ try:
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
                 np.mean(garr[-args.monitor:]),
-                scheduler.get_last_lr()[0],
+                optimizer.param_groups[0]['lr'],
                 _dmean, _dstd, _dmax, _dzero, args.batch,
             )
             print(s)
@@ -1452,7 +1545,8 @@ try:
                 if len(_a) > args.monitor:
                     del _a[:-args.monitor]
 
-        scheduler.step()
+        if not _plateau:            # plat drives the lr from the checkpoint block instead
+            scheduler.step()
         optimizer.zero_grad()
         i += 1
 
