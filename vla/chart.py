@@ -31,6 +31,8 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--head', help='remove first head lines from log',default=0, type=int)
 parser.add_argument('--log',help='log file name',default='log')
 parser.add_argument('--verbose', default=False, action='store_true')
+parser.add_argument('--batch', default=False, action='store_true',
+                    help='overlay the per-step batch size on the grad panel (secondary y axis)')
 parser.add_argument('--outliers', default=False, action='store_true',
                     help='scale the loss and grad panels to every sample, including the '
                          'startup transient and isolated spikes that are trimmed by default')
@@ -152,7 +154,9 @@ if title:
     fig.suptitle(title)
 ax1 = fig.add_subplot(nplots,1,1)
 ax2 = fig.add_subplot(nplots,1,2, sharex=ax1)
-ax2b = ax2.twinx()   # batch size overlays grad: the two move together when --batch changes
+# --batch overlays batch size on grad: the two move together when the run's --batch
+# changes. Off by default -- the twin's own gridless scale reads as clutter otherwise.
+ax2b = ax2.twinx() if args.batch else None
 #ax1.set_ylim(bottom=0, top=np.log(50257))
 ax1.set_ylim(bottom=0, top=ylim_top(loss, 'loss'))
 ax1.plot(step, loss, '.w', linewidth=0.1,alpha=1.0, markersize=1)
@@ -161,13 +165,14 @@ ax1.axhline(y=np.min(loss), color='g', linestyle='-',linewidth=1,label='min')
 #ax2.plot(step, grad, '-y', linewidth=2.0,alpha=0.5)
 ax2.plot(step, grad, '.y', linewidth=0.1,alpha=1.0, markersize=1)
 ax2.set_ylim(bottom=0, top=ylim_top(grad, 'grad'))
-# piecewise constant (it only changes when a run is resumed at a different --batch)
-ax2b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
-ax2b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
+if ax2b is not None:
+    # piecewise constant (it only changes when a run is resumed at a different --batch)
+    ax2b.plot(step, bs, '-', color='orange', linewidth=2.0, alpha=0.5, drawstyle='steps-post')
+    ax2b.set_ylim(bottom=0, top=float(bs.max()) * 1.2 or 1)
+    ax2b.set_ylabel('batch size', color='orange')
 
 ax1.set_ylabel('loss', color='w')
 ax2.set_ylabel('grad', color='y')
-ax2b.set_ylabel('batch size', color='orange')
 
 # y axis: minor ticks between the majors, and a hairline major gridline in the trace's own
 # colour, so the grid reads as part of its plot instead of competing with the samples
@@ -177,7 +182,7 @@ for ax, color in ((ax1, 'w'), (ax2, 'y')):
 
 # twins are tracked separately: twinx hides their x axis, so the shared x-axis label has to
 # land on a host subplot, never on a twin
-axes, twins = [ax1, ax2], [ax2b]
+axes, twins = [ax1, ax2], ([ax2b] if ax2b is not None else [])
 if args.verbose:
     ax3 = fig.add_subplot(nplots,1,3, sharex=ax1)
     ax3b = ax3.twinx()

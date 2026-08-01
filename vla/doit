@@ -1,4 +1,6 @@
-python vla.py --dataset web --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.01
+python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.01
+
+#python vla.py --dataset web --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.01
 #python vla.py --dataset web --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule plat --lr_max 0.1 --lr_min 0.001 --lr_period 1000000
 
 #python vla.py --dataset web --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 400 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.1 --init relu --load checkpoint.pt
