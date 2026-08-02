@@ -42,7 +42,8 @@ batch_size=0
 
 # STEP lines look like:
 #   STEP 100 wall <date> <time> loss <v> grad <v> lr <v> dff_mean <v> dff_std <v> \
-#        dff_max <v> dff_zeros <v> batch <v> a_std <v> i_std <v>  [loss_txt <v> loss_av <v>]
+#        dff_max <v> dff_zeros <v> batch <v> examples <v> a_std <v> i_std <v> \
+#        [loss_txt <v> loss_av <v>]
 # Parse each numeric field by name so the layout is robust to the date/time tokens
 # and to optional mix-mode fields.
 _FIELDS = ['batch', 'loss', 'grad', 'lr', 'dff_mean', 'dff_std', 'dff_max', 'dff_zeros',

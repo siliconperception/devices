@@ -228,6 +228,7 @@ _ARCH_ARGS = ('context', 'n_hidden', 'c_text', 'n_layers', 'depth', 'kernel', 's
 
 _loaded_ckpt = None
 _start_step  = 0                 # resumed global step count (0 for a fresh run)
+_start_exs   = 0                 # resumed cumulative training-example count
 _start_lr    = None              # lr the checkpoint was saved at (--schedule plat resume)
 _start_plat  = None              # binned loss window carried across a --schedule plat resume
 if args.pretrained and args.load is not None:
@@ -241,6 +242,7 @@ if args.load is not None:
         # older checkpoints may predate an arch arg → keep the current default for it
         setattr(args, _k, _loaded_ckpt['saved_args'].get(_k, getattr(args, _k)))
     _start_step = int(_loaded_ckpt.get('step', 0))   # continue the step sequence
+    _start_exs  = int(_loaded_ckpt.get('examples', 0))   # continue the example count
     # read here: the ckpt is freed before the scheduler is built
     _start_lr   = _loaded_ckpt.get('lr')
     _start_plat = _loaded_ckpt.get('plat')
@@ -1415,6 +1417,9 @@ def _diag(model):
 
 larr, garr = [], []
 i = _start_step        # continue the step count from the resumed checkpoint (0 if fresh)
+# cumulative count of training examples (one <STX>..<ETX> clip) begun, over all slots;
+# a slot's flag is True on the step it emits its <STX>, so summing flags counts examples.
+n_examples = _start_exs
 _plat_sum, _plat_n = 0.0, 0    # running mean of this interval's losses, for the plat bin
 
 try:
@@ -1451,7 +1456,7 @@ try:
                 # to fast-forward, so it picks up the lr it was saved at and keeps filling
                 # the same binned loss window instead of starting it over.
                 torch.save({'saved_args': vars(args), 'state_dict': model.state_dict(),
-                            'log': _log_text, 'step': i,
+                            'log': _log_text, 'step': i, 'examples': n_examples,
                             'lr': optimizer.param_groups[0]['lr'],
                             'plat': list(_plat_loss) if _plateau else None}, args.save)
             else:
@@ -1478,6 +1483,7 @@ try:
 
         # ── fetch batch ───────────────────────────────────────────────────────
         x_list, y_list, flag_list = q.get()
+        n_examples += sum(flag_list)
         x    = torch.tensor(x_list,    dtype=torch.long).to(args.device)
         y    = torch.tensor(y_list,    dtype=torch.long).to(args.device)
         flag = torch.tensor(flag_list, dtype=torch.bool).to(args.device)
@@ -1528,12 +1534,12 @@ try:
             # batch size that produced each point (loss/grad both scale with it).
             s = ('STEP {:10} wall {} loss {:12.9f} grad {:12.6f} '
                  'lr {:10.9f} dff_mean {:12.5f} dff_std {:12.5f} dff_max {:11.3f} '
-                 'dff_zeros {:8.5f} batch {:6d}').format(
+                 'dff_zeros {:8.5f} batch {:6d} examples {:12d}').format(
                 i, datetime.datetime.now(),
                 np.mean(larr[-args.monitor:]),
                 np.mean(garr[-args.monitor:]),
                 optimizer.param_groups[0]['lr'],
-                _dmean, _dstd, _dmax, _dzero, args.batch,
+                _dmean, _dstd, _dmax, _dzero, args.batch, n_examples,
             )
             print(s)
             with open(args.log, 'a') as f:
