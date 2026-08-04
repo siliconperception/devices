@@ -25,7 +25,6 @@ import subprocess
 import datetime
 import time
 import random
-import re
 import matplotlib.pyplot as plt
 
 NULL      = 0x00
@@ -161,25 +160,17 @@ parser.add_argument('--n',             default=200,   type=int,
 parser.add_argument('--prompt',        default='',
                     help='generation prompt; START (0x02) is always prepended, so leave '
                          'empty to generate from START alone')
-parser.add_argument('--evaluate',      default=False, action='store_true',
-                    help='one-shot: load checkpoint, score HellaSwag zero-shot, print accuracy, '
-                         'exit (no training dataset/training)')
-parser.add_argument('--split',         default='validation', choices=['train', 'validation'],
-                    help='--evaluate: HellaSwag split (its test split is unlabeled, so it '
-                         'cannot be scored)')
-parser.add_argument('--limit',         default=None,  type=int,
-                    help='--evaluate: score only the first N examples (None = the whole split)')
 parser.add_argument('--init',          default='relu',
                     choices=['zero', 'gaussian', 'relu'],
                     help='how the DFF context is seeded before prompting and at every '
-                         'context reset, in all modes (training, --generate, --vis, '
-                         '--evaluate): zeros, standard-normal noise, or relu(randn) '
+                         'context reset, in all modes (training, --generate, --vis): '
+                         'zeros, standard-normal noise, or relu(randn) '
                          '(non-negative, ~50%% zeros, matching the steady-state shape)')
 parser.add_argument('--seed',          default=None,  type=int)
 parser.add_argument('--device',        default=None)
 parser.add_argument('--verbose',       default=False, action='store_true',
                     help='print the torchinfo model summaries in --generate/--vis (training '
-                         'and --evaluate always print them, since they are logged)')
+                         'always prints them, since they are logged)')
 parser.add_argument('--vis',           default=False, action='store_true',
                     help='live text-generation viz (DFF std + P(next token)) from the '
                          'prompt token; no training. Read-only. Press x to exit')
@@ -194,13 +185,16 @@ parser.add_argument('--push',          default=False, action='store_true',
                     help='push the --load checkpoint to the HuggingFace hub as a '
                          'PyTorchModelHubMixin model (repo --hub_repo), then exit. '
                          'No training. Requires a write token (huggingface-cli login)')
-parser.add_argument('--pretrained',    default=False, action='store_true',
-                    help='load weights + architecture from the HuggingFace hub repo '
-                         '--hub_repo instead of a local checkpoint. Overrides --load')
+parser.add_argument('--pretrained',    default=None, nargs='?', metavar='REPO',
+                    const='siliconperception/VLA',
+                    help='load weights + architecture from this HuggingFace hub repo '
+                         'instead of a local checkpoint, e.g. siliconperception/VLA '
+                         '(the value used when the flag is given with no repo). '
+                         'Overrides --load')
 parser.add_argument('--revision',      default=None,
                     help='--pretrained: hub branch, tag or commit (default: main)')
 parser.add_argument('--hub_repo',      default='siliconperception/VLA',
-                    help='--push target / --pretrained source hub repo id')
+                    help='--push target hub repo id')
 parser.add_argument('--private',       default=False, action='store_true',
                     help='--push: create the hub repo private (default: the org/user default '
                          'visibility). Ignored if the repo already exists')
@@ -234,7 +228,7 @@ _start_plat  = None              # binned loss window carried across a --schedul
 if args.pretrained and args.load is not None:
     # --pretrained overrides --load: the hub repo carries both weights and config.json,
     # so a local checkpoint would only be half-used (its saved_args then foreign weights).
-    print(f'--pretrained overrides --load {args.load}: loading {args.hub_repo} from the hub')
+    print(f'--pretrained overrides --load {args.load}: loading {args.pretrained} from the hub')
     args.load = None
 if args.load is not None:
     _loaded_ckpt = torch.load(args.load, map_location='cpu', weights_only=True)
@@ -256,12 +250,11 @@ if args.log is None:
     if args.generate or args.vis or args.push:   # one-shot modes: don't create a log file
         args.log = os.devnull
     else:
-        # training -> log/log.<date>, --evaluate -> log/eval.<date>, so eval scores are kept
-        # and can be compared across checkpoints. Never reuse a name: two runs started in the
+        # training -> log/log.<date>. Never reuse a name: two runs started in the
         # same second would otherwise interleave their lines in one file.
         os.makedirs('log', exist_ok=True)
         date = subprocess.check_output(['/usr/bin/date', '+%Y.%m.%d-%H.%M.%S']).decode().strip()
-        stem = f'log/{"eval" if args.evaluate else "log"}.{date}'
+        stem = f'log/log.{date}'
         args.log, n = stem, 1
         while os.path.exists(args.log):
             args.log, n = f'{stem}.{n}', n + 1
@@ -274,9 +267,8 @@ if args.seed is None:
 torch.manual_seed(args.seed)
 print(args)
 # Prepend the resumed checkpoint's log so chart.py sees one uninterrupted sequence.
-# Only for real training log files (skip devnull / generate / vis / evaluate).
-if (_loaded_ckpt is not None and not args.evaluate
-        and args.log and args.log != os.devnull):
+# Only for real training log files (skip devnull / generate / vis).
+if _loaded_ckpt is not None and args.log and args.log != os.devnull:
     _prev_log = _loaded_ckpt.get('log') or ''
     if _prev_log:
         with open(args.log, 'a') as f:
@@ -374,7 +366,7 @@ class VLAModel(nn.Module, _HubMixin):
 
     def _new_dff(self, B, device):
         """A fresh DFF context state (--init). Used everywhere a context is started or
-        reset, so train/generate/vis/evaluate all begin from the same distribution.
+        reset, so train/generate/vis all begin from the same distribution.
 
           zero      zeros
           gaussian  standard-normal noise
@@ -802,10 +794,10 @@ def worker(stop, q, datasets, args, mix=None):
 
 # ── dataset loading (before CUDA init) ───────────────────────────────────────
 
-if args.vis or args.generate or args.evaluate or args.push:
+if args.vis or args.generate or args.push:
     hf_dataset = None                 # one-shot modes: --vis/--generate run from the prompt
-                                      # token, --evaluate loads HellaSwag itself, --push only
-                                      # uploads weights — none of them needs a training dataset
+                                      # token, --push only uploads weights — none of them
+                                      # needs a training dataset
 else:
     print('loading dataset...')
     if _mix is not None:
@@ -826,8 +818,8 @@ if args.pretrained:
     if not hasattr(VLAModel, 'from_pretrained'):
         print('ERROR: --pretrained requires huggingface_hub (pip install huggingface_hub)')
         raise SystemExit(1)
-    print(f'loading {args.hub_repo} from the hub...')
-    model = VLAModel.from_pretrained(args.hub_repo, revision=args.revision)
+    print(f'loading {args.pretrained} from the hub...')
+    model = VLAModel.from_pretrained(args.pretrained, revision=args.revision)
     _cfg  = getattr(model, '_hub_mixin_config', None) or {}
     for _k, _a in (('context', 'S'), ('n_hidden', 'n_hidden'), ('c_text', 'c_text'),
                    ('n_layers', 'n_layers'), ('depth', 'depth'), ('kernel', 'kernel'),
@@ -889,14 +881,14 @@ if args.push:
     # one-shot: save the loaded checkpoint in HuggingFace format (model.safetensors +
     # config.json, from PyTorchModelHubMixin) and upload it to --hub_repo, then exit.
     # Needs a write token in the environment (huggingface-cli login, or HF_TOKEN).
-    if args.load is None and not args.pretrained:
+    if args.load is None and args.pretrained is None:
         print('ERROR: --push requires --load (nothing to push but random weights)')
         raise SystemExit(1)
     if not hasattr(model, 'push_to_hub'):
         print('ERROR: --push requires huggingface_hub (pip install huggingface_hub)')
         raise SystemExit(1)
     local = os.path.basename(args.hub_repo)
-    print(f'saving {args.load or args.hub_repo} to ./{local} ...')
+    print(f'saving {args.load or args.pretrained} to ./{local} ...')
     model.to('cpu').save_pretrained(local)
     print(f'pushing to https://huggingface.co/{args.hub_repo} ...')
     # private=None (not False) when the flag is unset: that lets the hub apply the org's
@@ -910,153 +902,11 @@ if args.generate:
     # continuation, then exit. No dataset, worker, optimizer or training loop.
     # Same seeding as --vis and the training-loop sampler, and the same [START]+text
     # framing the model is trained on, so the output always opens with <STX>.
-    if args.load is None and not args.pretrained:
+    if args.load is None and args.pretrained is None:
         print('WARNING: --generate without --load/--pretrained is running an untrained model')
     prompt = [START] + list(args.prompt.encode('utf-8', errors='replace'))
     out    = model.generate(prompt, args.n, temperature=args.temperature)
     print(_printable(bytes(prompt + out).decode('utf-8', errors='replace')))
-    raise SystemExit(0)
-
-# ── hellaswag evaluation ──────────────────────────────────────────────────────
-# HellaSwag (https://huggingface.co/datasets/Rowan/hellaswag) gives a context and four
-# candidate endings, one of which is correct. A language model is scored zero-shot by
-# completion likelihood: feed the context, then score each ending and pick the most likely.
-# Accuracy compares against https://rowanzellers.com/hellaswag/ (random = 25%).
-#
-# This is a byte model, so "scoring an ending" means summing the log-probability of each of
-# its UTF-8 bytes, teacher-forced, with the DFF state carried over from the context. Two
-# scores are reported, the usual pair for zero-shot LM eval:
-#
-#   acc_norm -- mean log-prob per ending byte (length-normalized). The headline number: it
-#               does not penalize long endings, and is what zero-shot results are quoted with.
-#   acc      -- total log-prob of the ending (un-normalized).
-
-def _hs_preprocess(text):
-    """The standard HellaSwag text cleanup (EleutherAI lm-evaluation-harness,
-    lm_eval/tasks/hellaswag/utils.py). The bracket tags -- [header] [title] [step]
-    [substeps] -- are artifacts of the WikiHow portion of the dataset and are stripped
-    before scoring; ~68% of contexts and ~65% of endings contain them."""
-    text = text.strip()
-    text = text.replace(' [title]', '. ')
-    text = re.sub('\\[.*?\\]', '', text)
-    text = text.replace('  ', ' ')
-    return text
-
-
-def _hs_render(example):
-    """Rendered the way zero-shot HellaSwag is rendered for a left-to-right LM, matching
-    the lm-evaluation-harness so acc_norm is comparable to published numbers:
-
-        prompt     = activity_label + ': ' + ctx_a + ' ' + ctx_b.capitalize()
-        completion = ' ' + ending
-
-    both run through _hs_preprocess. Note the dataset's own 'ctx' field is just
-    ctx_a + ' ' + ctx_b -- it carries no activity label and leaves ctx_b uncapitalized --
-    so the parts are recombined here rather than used directly. Bytes, not tokens."""
-    ctx     = example['ctx_a'] + ' ' + example['ctx_b'].capitalize()
-    ctx     = _hs_preprocess(example['activity_label'] + ': ' + ctx)
-    ctx     = [START] + list(ctx.encode('utf-8', errors='replace'))
-    endings = [list((' ' + _hs_preprocess(e)).encode('utf-8', errors='replace'))
-               for e in example['endings']]
-    return ctx, endings
-
-
-def _hs_pad(seqs, device):
-    """Right-pad byte lists to a [B, Lmax] long tensor (+ their [B] lengths)."""
-    lens = torch.tensor([len(s) for s in seqs], dtype=torch.long, device=device)
-    out  = torch.full((len(seqs), int(lens.max())), NULL, dtype=torch.long, device=device)
-    for i, s in enumerate(seqs):
-        out[i, :len(s)] = torch.tensor(s, dtype=torch.long, device=device)
-    return out, lens
-
-
-@torch.no_grad()
-def _hs_score(model, examples, device):
-    """Log-prob of each ending under the model.
-    Returns (sum_lp [E, 4], n_bytes [E, 4]): total ending log-prob and its byte count."""
-    E        = len(examples)
-    rendered = [_hs_render(e) for e in examples]
-
-    # Context phase: run each context once, freezing the DFF state of sequences that have
-    # already ended, so every example finishes on the step that consumes its own last
-    # context byte. `logits` then predicts the first byte of the ending.
-    ctx, ctx_len = _hs_pad([c for c, _ in rendered], device)
-    dff    = model._new_dff(E, device)
-    logits = torch.zeros(E, 256, device=device)
-    for t in range(int(ctx_len.max())):
-        live = (t < ctx_len).view(E, 1, 1, 1)
-        stack, out = model._layers(dff, model._tok_grid(ctx[:, t]))
-        dff    = [torch.where(live, s, d) for s, d in zip(stack, dff)]
-        logits = torch.where(live.view(E, 1), model.decoder(out), logits)
-
-    # Ending phase: fork the context state to the four candidates, so the (long) context is
-    # not recomputed four times. Byte e[t] is scored under the logits produced by everything
-    # before it, then fed in to produce the logits for e[t+1]. Sequences past their end keep
-    # stepping (their state is dead) but contribute nothing: `live` masks them out.
-    end, end_len = _hs_pad([e for _, ends in rendered for e in ends], device)
-    dff    = [d.repeat_interleave(4, dim=0) for d in dff]
-    logits = logits.repeat_interleave(4, dim=0)
-    sum_lp = torch.zeros(4 * E, device=device)
-    for t in range(int(end_len.max())):
-        live    = (t < end_len)
-        logp    = F.log_softmax(logits, dim=-1).gather(1, end[:, t:t + 1]).squeeze(1)
-        sum_lp += torch.where(live, logp, torch.zeros_like(logp))
-        if t + 1 == end.shape[1]:
-            break
-        stack, out  = model._layers(dff, model._tok_grid(end[:, t]))
-        dff, logits = stack, model.decoder(out)
-
-    return sum_lp.view(E, 4), end_len.view(E, 4)
-
-
-if args.evaluate:
-    # one-shot: score the HellaSwag split, print accuracy, exit. --batch is examples per
-    # batch (each becomes 4 sequences in the ending phase), --monitor the progress interval.
-    # Everything printed also goes to log/eval.<date> (with the ARGS line already written
-    # there), so a score stays attributable to the checkpoint and split that produced it and
-    # runs can be compared after the fact.
-    def _elog(s):
-        print(s, flush=True)
-        with open(args.log, 'a') as f:
-            print(s, file=f)
-
-    if args.load is None and not args.pretrained:
-        _elog('WARNING: --evaluate without --load/--pretrained is scoring an untrained model')
-    from datasets import load_dataset
-    _elog(f'loading hellaswag ({args.split})...')
-    hs = load_dataset('Rowan/hellaswag', split=args.split)
-    if args.limit is not None:
-        hs = hs.select(range(min(args.limit, len(hs))))
-    _elog(f'EVAL checkpoint {args.load or (args.hub_repo + "@" + (args.revision or "main"))} '
-          f'split {args.split} examples {len(hs)}')
-
-    model.eval()
-    n = hit = hit_norm = 0
-    t0 = time.time()
-    nxt = 0   # next example count to report at: progress every --monitor examples, rounded
-              # up to the batch that crosses it (so any --batch/--monitor pairing reports)
-
-    for bi in range(0, len(hs), args.batch):
-        batch  = [hs[j] for j in range(bi, min(bi + args.batch, len(hs)))]
-        labels = torch.tensor([int(e['label']) for e in batch], device=args.device)
-
-        sum_lp, n_bytes = _hs_score(model, batch, args.device)
-        avg_lp = sum_lp / n_bytes.clamp(min=1)
-
-        n        += len(batch)
-        hit      += (sum_lp.argmax(dim=1) == labels).sum().item()
-        hit_norm += (avg_lp.argmax(dim=1) == labels).sum().item()
-
-        if n >= nxt:
-            _elog(f'{n:6d}/{len(hs)}  acc_norm {hit_norm / n:.4f}  acc {hit / n:.4f}  '
-                  f'({n / (time.time() - t0):.1f} ex/s)')
-            nxt = n + args.monitor
-
-    _elog(f'\nHellaSwag {args.split}: {n} examples, {time.time() - t0:.0f}s')
-    _elog(f'  acc_norm  {hit_norm / n:.4f}   ({hit_norm}/{n})   <- length-normalized (headline)')
-    _elog(f'  acc       {hit / n:.4f}   ({hit}/{n})')
-    _elog(f'  random    0.2500')
-    print(f'\nlog {args.log}')
     raise SystemExit(0)
 
 # ── vis setup ─────────────────────────────────────────────────────────────────
