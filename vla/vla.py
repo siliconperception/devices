@@ -117,8 +117,10 @@ parser.add_argument('--weight_decay',  default=0.0,   type=float,
 # (and the optimizer base lr); lr_min is the floor; lr_warmup / lr_period are step counts.
 parser.add_argument('--schedule',      default='const',
                     choices=['const', 'warmup', 'linear', 'triangle', 'cosine', 'plat'],
-                    help='lr schedule: "const" (fixed --lr_max), "warmup" (hold --lr_min for '
-                         '--lr_warmup steps, then jump to --lr_max and hold), "linear" (ramp '
+                    help='lr schedule: "const" (fixed --lr_max), "warmup" (ramp '
+                         '--lr_min->--lr_max over --lr_warmup steps, then hold; the ramp is '
+                         'measured from the start of this run, so it restarts on --load), '
+                         '"linear" (ramp '
                          '--lr_min->--lr_max over --lr_period, then hold), "triangle" (ramp '
                          '--lr_min->--lr_max over --lr_warmup, then --lr_max->--lr_min over '
                          '--lr_period), "cosine" (cyclic --lr_min<->--lr_max, --lr_period '
@@ -128,7 +130,7 @@ parser.add_argument('--schedule',      default='const',
                          'a decay clears the window, so the lr drops at most once per '
                          '--lr_period steps)')
 parser.add_argument('--lr_min',        default=1e-6,  type=float,
-                    help='minimum / floor learning rate (linear|triangle|cosine)')
+                    help='minimum / floor learning rate (warmup|linear|triangle|cosine)')
 parser.add_argument('--lr_max',        default=0.001, type=float,
                     help='peak learning rate; also the constant lr for --schedule const '
                          'and the optimizer base lr')
@@ -1140,8 +1142,11 @@ _period  = max(1, args.lr_period)
 def _lr_factor(step):
     if args.schedule == 'const':                       # fixed lr_max
         lr = _hi
-    elif args.schedule == 'warmup':                    # hold lr_min for lr_warmup steps, then step to lr_max
-        lr = _lo if step < _warm else _hi
+    elif args.schedule == 'warmup':                    # ramp lr_min -> lr_max over lr_warmup, then hold
+        # measured from the start of *this* run, not the global step: resuming a
+        # checkpoint with --schedule warmup means "ease this run back in", so the
+        # ramp restarts on every --load instead of being fast-forwarded past.
+        lr = _lo + (_hi - _lo) * min((step - _start_step) / _warm, 1.0)
     elif args.schedule == 'linear':                    # ramp lr_min -> lr_max over lr_period, then hold
         lr = _lo + (_hi - _lo) * min(step / _period, 1.0)
     elif args.schedule == 'triangle':                  # up over lr_warmup, down over lr_period, then hold lr_min
