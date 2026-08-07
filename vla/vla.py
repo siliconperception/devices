@@ -102,6 +102,15 @@ parser.add_argument('--shards',        default=None,  type=int,
 parser.add_argument('--batch',         default=100,   type=int)
 parser.add_argument('--workers',       default=12,    type=int,
                     help='parallel clip-builder threads (decode/download); raise for cc3m image streaming')
+parser.add_argument('--preroll',       default=False, action='store_true',
+                    help='decorrelate the batch before training: discard batches (no forward, '
+                         'no step) until the first <ETX> comes out of the data stream, then '
+                         'start training. Every slot loads its first clip on step 0, so on a '
+                         'corpus whose examples open alike (TinyStories: "Once upon a time...") '
+                         'the whole batch runs near-identical text in lockstep for its first '
+                         'few hundred steps. Draining to the first <ETX> ends the shortest clip '
+                         'in the batch and leaves every slot at a different point in a '
+                         'different story')
 parser.add_argument('--run_steps',     default=None,  type=int,
                     help='stop the run after this many gradient steps (None = run indefinitely); '
                          'handy for fixed-length sweeps')
@@ -1276,6 +1285,23 @@ i = _start_step        # continue the step count from the resumed checkpoint (0 
 # a slot's flag is True on the step it emits its <STX>, so summing flags counts examples.
 n_examples = _start_exs
 _plat_sum, _plat_n = 0.0, 0    # running mean of this interval's losses, for the plat bin
+
+# --preroll: throw away batches until the stream produces its first <ETX>. Cheap —
+# it only drains the queue, no forward/backward — and it costs one clip's worth of
+# tokens. Slots all begin their first clip together on step 0, so until the first
+# clip ends the batch is `--batch` copies of the same opening; training through that
+# is a correlated batch at the point the run is most sensitive to it. The first <ETX>
+# is the shortest clip in the batch ending: from there each slot sits at a different
+# offset in a different story and slots reload at staggered steps.
+if args.preroll:
+    _pre = 0
+    while True:
+        _, _y_list, _ = q.get()
+        _pre += 1
+        if END in _y_list:     # a slot just emitted the <ETX> target ending its clip
+            break
+    print(f'preroll: discarded {_pre} steps ({_pre * args.batch:,} tokens) '
+          f'to reach the first <ETX>')
 
 try:
     while True:

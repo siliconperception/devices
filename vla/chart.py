@@ -34,8 +34,14 @@ parser.add_argument('--verbose', default=False, action='store_true')
 parser.add_argument('--batch', default=False, action='store_true',
                     help='overlay the per-step batch size on the grad panel (secondary y axis)')
 parser.add_argument('--outliers', default=False, action='store_true',
-                    help='scale the loss and grad panels to every sample, including the '
-                         'startup transient and isolated spikes that are trimmed by default')
+                    help='plot every sample. By default the leading samples are dropped until '
+                         'the body of the run reaches at least half the height of the loss and '
+                         'grad panels, so the startup transient does not set their scale')
+parser.add_argument('--sigma', default=0.0, type=float,
+                    help='instead of scaling the loss and grad panels to the samples drawn, cap '
+                         'them at the median + N standard deviations of the last 1000 samples '
+                         '(2 is a readable zoom on the live region); anything above the cap is '
+                         'clipped')
 args = parser.parse_args()
 print(args)
 batch_size=0
@@ -111,36 +117,87 @@ print('title:', title)
 
 #grad = np.clip(grad, 0, 10)
 
-PCT = 99.9   # share of samples the loss/grad panels are guaranteed to cover
+TAIL   = 1000   # trailing samples --sigma scales to
+HALF   = 0.5    # share of the y range the body of the run has to reach
+MAXCUT = 0.5    # never drop more than this share of the samples to get there
+CAP    = 0.125  # where the body lands on a panel that has to be capped instead (see ylim_top)
+
+def _fills(a):
+    """How far the body of `a` reaches up a 0..max(a) axis, as a fraction of HALF: >= 1
+    means the median sits at or above the half-height line."""
+    top = float(a.max()) * 1.05
+    return 0.0 if top <= 0 else float(np.median(a)) / (HALF * top)
+
+
+def trim_start(series):
+    """First sample index to plot. A run's startup transient sets the axis for the whole
+    chart — loss opens at 5.5 and settles at 1.5, so 0..5.5 draws the part anyone is
+    actually reading in the bottom quarter. Rather than clip the y axis to the live region
+    (which hides the history and leaves the trace pinned under the axis top), drop leading
+    samples until the body of what remains — its median — reaches at least half the axis
+    height. The transient scrolls off the left, the top stays a real data value, and
+    nothing is clipped.
+
+    Each series asks for the smallest cut that works for it and the largest wins, so the
+    x axis stays aligned across panels and no series is trimmed further than it needs. A
+    series whose outliers are spread through the run (grad spikes) can never satisfy the
+    test by trimming its front, so it asks for nothing rather than dragging the cut to the
+    MAXCUT ceiling for no gain — ylim_top caps that panel instead."""
+    n = min(s.size for s in series)
+    if n < 10:
+        return 0
+    stride = max(1, n // 200)                  # 0.5% granularity is enough
+    limit  = int(n * MAXCUT)
+
+    def _first_k(a):
+        for k in range(0, limit + 1, stride):
+            if _fills(a[k:]) >= 1.0:
+                return k
+        return 0                               # unreachable: leave it to ylim_top
+    return max(_first_k(s) for s in series)
+
 
 def ylim_top(a, name=''):
-    """Top y-limit that hides outliers, so the axis is scaled by the body of the run instead
-    of by its worst few samples. Two kinds of outlier get trimmed:
+    """Top y-limit: the largest sample drawn, +5% headroom, so the top is a real value and
+    nothing goes off-panel. trim_start() has already dropped the startup transient, which
+    is what made scaling to the max unreadable.
 
-      startup transient  training opens with a large transient (grad starts in the thousands
-                         before settling near ~2). Drop initial points whose step to the next
-                         point exceeds the series mean.
-      isolated spikes    a single bad batch mid-run leaves a lone spike many times the local
-                         value. Drop everything past the PCT'th percentile of what remains.
-
-    The top is then the largest surviving sample (+5% headroom), so it is always a real data
-    value. A clean series drops nothing and its top still covers every point. --outliers skips
-    both trims and scales to the raw max."""
+    Trimming only reaches outliers at the *start* of a run, and grad spikes recur all the
+    way through one: after the cut its body can still sit at a tenth of panel height. When
+    that happens the top is capped at the height that puts the median a CAP fraction up,
+    and the spikes above it clip — the same trade the trim avoids, taken only on a panel
+    that is unreadable without it. CAP sits well below the half the trim aims for: grad's
+    scatter runs several times its own median, so a half-height body clips the excursions
+    that are the reason to look at the panel at all.
+    --sigma overrides both with a fixed zoom on the last TAIL samples."""
     if a.size == 0:
         return None
     if args.outliers:
-        return float(a.max()) * 1.05
-    thr, i = a.mean(), 0
-    while i + 1 < a.size and abs(a[i + 1] - a[i]) > thr:
-        i += 1
-    b = a[i:]
-    keep = b[b <= np.percentile(b, PCT)]
-    top = float(keep.max() if keep.size else b.max()) * 1.05
+        return float(a.max()) * 1.05 or 1.0
+    if args.sigma:
+        w   = a[-TAIL:]
+        top = float(np.median(w)) + args.sigma * float(w.std())
+    else:
+        top  = float(a.max()) * 1.05
+        body = float(np.median(a))
+        if top > 0 and body < CAP * top:       # spikes the cut could not remove
+            top = body / CAP
+    if not np.isfinite(top) or top <= 0:
+        return float(a.max()) * 1.05 or 1.0
     hidden = int((a > top).sum())
     if hidden:
         print(f'{name}: {hidden}/{a.size} samples above the axis top {top:.4g} '
               f'(max {a.max():.4g}), use --outliers to show them')
     return top
+
+# Drop the startup transient (see trim_start) before anything is scaled or plotted. One cut
+# for every series, so the shared x axis and the --verbose panels stay aligned with it.
+cut = 0 if args.outliers else trim_start([loss, grad])
+if cut:
+    print(f'trimmed first {cut}/{step.size} samples (through step {step[cut - 1]:.0f}) so the '
+          f'body of the run fills the upper half of the loss/grad panels; --outliers keeps them')
+    step, loss, grad, lr = step[cut:], loss[cut:], grad[cut:], lr[cut:]
+    mean, std, dmax, zero, bs = mean[cut:], std[cut:], dmax[cut:], zero[cut:], bs[cut:]
 
 window_size = 10
 weights = np.ones(window_size) / window_size

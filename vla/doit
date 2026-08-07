@@ -1,6 +1,14 @@
+python vla.py --dataset tiny --preroll --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 500 --monitor 10 --checkpoint 100 --opt adamw --weight_decay 0.01 --momentum 0.99 --schedule warmup --lr_min 0.000001 --lr_max 0.001 --lr_warmup 1000
+#python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 500 --monitor 10 --checkpoint 100 --opt adamw --weight_decay 0.01 --momentum 0.99 --schedule const --lr_max 0.01125
+
+#python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt adamw --weight_decay 0.01 --momentum 0.99 --schedule const --lr_max 0.001
+
+#python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.02828427124746190097 --load checkpoint.pt.24
+#python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 100 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.02 --load checkpoint.pt.23
+#python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.02 --load checkpoint.pt.22
+
 #python vla.py --dataset tiny --n_layers 2 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule linear --lr_min 0.000001 --lr_max 0.01 --lr_period 2000
 
-python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.02 --load checkpoint.pt.22
 #python vla.py --dataset tiny --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.02
 
 #python vla.py --dataset web --n_layers 1 --context 28 --n_hidden 128 --depth 56 --kernel 3 --c_text 1 --batch 50 --monitor 100 --checkpoint 1000 --opt sgd --weight_decay 0.0 --momentum 0.0 --schedule const --lr_max 0.01
